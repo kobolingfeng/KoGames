@@ -55,7 +55,7 @@ build.bat
 
 如果 KoGames 对你有帮助，请给个 **Star** ⭐ 支持一下！
 
-[👉 点击这里给个 Star](https://github.com/koboling/KoGames)
+[👉 点击这里给个 Star](https://github.com/kobolingfengfeng/KoGames)
 
 ## ❤️ 赞助支持
 
