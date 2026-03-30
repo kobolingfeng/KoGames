@@ -3,6 +3,7 @@
   import { invoke, convertFileSrc } from "@tauri-apps/api/core";
   import { listen } from "@tauri-apps/api/event";
   import type { Game, CompletionStatus, SortMode, FilterPlatform, FilterStatus } from '../lib/types';
+  import { setLocale, getLocale, t as _t } from '../lib/i18n/index';
 
   function getCoverUrl(coverPath: string | undefined): string | null {
     if (!coverPath) return null;
@@ -19,7 +20,7 @@
     onAddGame = () => {},
     onTogglePin = (_game: Game) => {},
     onGamesChanged = () => {},
-    t = (key: string) => key,
+    t: _tProp = (key: string) => key,
   }: {
     games: Game[];
     onExit: () => void;
@@ -44,6 +45,20 @@
   let soundEnabled = $state(true);
   let screenSaverEnabled = $state(true);
   let showSponsor = $state(false);
+  let currentLang = $state(getLocale());
+
+  // Reactive t() that re-evaluates when currentLang changes
+  const t = $derived.by(() => {
+    // Reference currentLang so Svelte tracks it
+    void currentLang;
+    return (key: string) => _t(key);
+  });
+
+  function toggleLanguage() {
+    const newLang = currentLang === 'zh' ? 'en' : 'zh';
+    setLocale(newLang);
+    currentLang = newLang;
+  }
 
   // 游戏详情
   let detailGame: Game | null = $state(null);
@@ -1450,34 +1465,34 @@
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <path d="M18 20V10"/><path d="M12 20V4"/><path d="M6 20v-6"/>
             </svg>
-            统计
+            {t('bs_stats')}
           </h3>
           <div class="stats-dashboard">
             <div class="stat-card">
               <span class="stat-value">{stats.total}</span>
-              <span class="stat-label">游戏总数</span>
+              <span class="stat-label">{t('bs_total_games_label')}</span>
             </div>
             <div class="stat-card">
               <span class="stat-value">{stats.totalHours}</span>
-              <span class="stat-label">总游戏时长 (h)</span>
+              <span class="stat-label">{t('bs_total_hours_label')}</span>
             </div>
             <div class="stat-card accent">
               <span class="stat-value">{stats.playing}</span>
-              <span class="stat-label">正在游玩</span>
+              <span class="stat-label">{t('bs_playing_label')}</span>
             </div>
             <div class="stat-card success">
               <span class="stat-value">{stats.completed}</span>
-              <span class="stat-label">已通关</span>
+              <span class="stat-label">{t('bs_completed_label')}</span>
             </div>
             <div class="stat-card">
               <span class="stat-value">{stats.backlog}</span>
-              <span class="stat-label">待游玩</span>
+              <span class="stat-label">{t('bs_backlog_label')}</span>
             </div>
           </div>
 
           {#if stats.mostPlayed.length > 0 && stats.mostPlayed[0].totalPlayTime}
             <div class="most-played">
-              <h4>最常游玩</h4>
+              <h4>{t('bs_most_played_label')}</h4>
               {#each stats.mostPlayed as game}
                 {#if game.totalPlayTime && game.totalPlayTime > 0}
                   <div class="mp-item">
@@ -1499,7 +1514,7 @@
 
           {#if Object.keys(stats.platformCounts).length > 0}
             <div class="platform-breakdown">
-              <h4>平台分布</h4>
+              <h4>{t('bs_platform_dist')}</h4>
               <div class="platform-bars">
                 {#each Object.entries(stats.platformCounts).sort((a, b) => b[1] - a[1]) as [platform, count]}
                   <div class="pb-item">
@@ -1522,7 +1537,7 @@
               <circle cx="12" cy="12" r="3"/>
               <path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/>
             </svg>
-            偏好
+            {t('bs_preferences')}
           </h3>
 
           <button class="settings-item" onclick={() => { soundEnabled = !soundEnabled; playSound('confirm'); }}>
@@ -1539,8 +1554,8 @@
               </svg>
             </div>
             <div class="settings-text">
-              <h3>导航音效</h3>
-              <p>{soundEnabled ? '已开启' : '已关闭'}</p>
+              <h3>{t('bs_nav_sound')}</h3>
+              <p>{soundEnabled ? t('bs_nav_sound_on') : t('bs_nav_sound_off')}</p>
             </div>
             <div class="settings-toggle" class:active={soundEnabled}>
               <div class="toggle-thumb"></div>
@@ -1556,12 +1571,29 @@
               </svg>
             </div>
             <div class="settings-text">
-              <h3>待机屏保</h3>
-              <p>{screenSaverEnabled ? '2分钟无操作后启动' : '已关闭'}</p>
+              <h3>{t('bs_screensaver')}</h3>
+              <p>{screenSaverEnabled ? t('bs_screensaver_on') : t('bs_screensaver_off')}</p>
             </div>
             <div class="settings-toggle" class:active={screenSaverEnabled}>
               <div class="toggle-thumb"></div>
             </div>
+          </button>
+
+          <button class="settings-item" onclick={toggleLanguage}>
+            <div class="settings-icon">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <circle cx="12" cy="12" r="10"/>
+                <line x1="2" y1="12" x2="22" y2="12"/>
+                <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/>
+              </svg>
+            </div>
+            <div class="settings-text">
+              <h3>{t('bs_language')}</h3>
+              <p>{currentLang === 'zh' ? t('bs_language_zh') : t('bs_language_en')}</p>
+            </div>
+            <svg class="settings-arrow" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M9 18l6-6-6-6"/>
+            </svg>
           </button>
         </div>
 

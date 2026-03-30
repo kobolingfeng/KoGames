@@ -18,3 +18,7 @@ export function t(key: string): string {
 export function setLocale(locale: string) {
   if (locales[locale]) currentLocale = locale;
 }
+
+export function getLocale(): string {
+  return currentLocale;
+}
