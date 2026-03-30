@@ -1,0 +1,52 @@
+[package]
+name = "kogames"
+version = "0.1.0"
+description = "KoGames - Game Library Manager"
+authors = ["You"]
+edition = "2021"
+
+[features]
+default = []
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = ["protocol-asset"] }
+tauri-plugin-dialog = "2.6"
+tauri-plugin-process = "2"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+regex = "1"
+reqwest = { version = "0.12", features = ["rustls-tls", "json"] }
+tokio = { version = "1", features = ["rt-multi-thread", "fs", "macros", "time"] }
+uuid = { version = "1", features = ["v4"] }
+arc-swap = "1"
+lazy_static = "1.4"
+
+[target.'cfg(windows)'.dependencies]
+winreg = "0.52"
+windows = { version = "0.58", features = [
+    "Win32_System_Power",
+    "Win32_Foundation",
+    "Win32_UI_Shell",
+    "Win32_UI_WindowsAndMessaging",
+    "Win32_System_Threading",
+] }
+
+[profile.dev]
+opt-level = 0
+incremental = true
+debug = "line-tables-only"
+codegen-units = 256
+
+[profile.dev.package."*"]
+opt-level = 2
+debug = false
+
+[profile.release]
+panic = "unwind"
+codegen-units = 16
+lto = "thin"
+opt-level = 3
+strip = true

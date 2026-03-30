@@ -1,0 +1,35 @@
+{
+  "$schema": "https://raw.githubusercontent.com/nickhealthy/tauri/dev/crates/tauri-config-schema/schema.json",
+  "productName": "KoGames",
+  "identifier": "com.kogames",
+  "version": "0.1.0",
+  "build": {
+    "beforeDevCommand": "npm run dev",
+    "devUrl": "http://localhost:1421",
+    "beforeBuildCommand": "npm run build",
+    "frontendDist": "../dist"
+  },
+  "app": {
+    "security": {
+      "csp": "default-src 'self'; img-src 'self' asset: https://steamcdn-a.akamaihd.net https://cdn.cloudflare.steamstatic.com https://store.steampowered.com https://cdn.akamai.steamstatic.com; connect-src 'self' https://steamcdn-a.akamaihd.net https://cdn.cloudflare.steamstatic.com https://store.steampowered.com; style-src 'self' 'unsafe-inline'"
+    },
+    "windows": [
+      {
+        "label": "main",
+        "title": "KoGames",
+        "fullscreen": true,
+        "resizable": true,
+        "decorations": false,
+        "transparent": false,
+        "alwaysOnTop": false,
+        "skipTaskbar": false,
+        "visible": true,
+        "width": 1920,
+        "height": 1080
+      }
+    ]
+  },
+  "plugins": {
+    "dialog": {}
+  }
+}
