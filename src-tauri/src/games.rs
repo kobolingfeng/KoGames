@@ -1740,48 +1740,6 @@ pub async fn list_backups(app: AppHandle) -> Result<Vec<serde_json::Value>, Stri
     Ok(backups)
 }
 
-// ==================== 随机游戏选择 ====================
-
-#[tauri::command(rename_all = "camelCase")]
-pub async fn pick_random_game(
-    app: AppHandle,
-    filter_platform: Option<String>,
-    filter_status: Option<String>,
-    exclude_hidden: Option<bool>,
-) -> Result<Option<Game>, String> {
-    let games = get_games(app).await.unwrap_or_default();
-
-    let filtered: Vec<&Game> = games.iter().filter(|g| {
-        if exclude_hidden.unwrap_or(true) && g.hidden.unwrap_or(false) {
-            return false;
-        }
-        if let Some(ref platform) = filter_platform {
-            if platform != "all" {
-                if g.source.as_deref() != Some(platform.as_str()) {
-                    return false;
-                }
-            }
-        }
-        if let Some(ref status) = filter_status {
-            if status != "all" {
-                if g.completion_status.as_deref() != Some(status.as_str()) {
-                    return false;
-                }
-            }
-        }
-        true
-    }).collect();
-
-    if filtered.is_empty() {
-        return Ok(None);
-    }
-
-    let idx = (std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .unwrap_or_default()
-        .as_nanos() as usize) % filtered.len();
-    Ok(Some(filtered[idx].clone()))
-}
 
 // ==================== 库统计 ====================
 

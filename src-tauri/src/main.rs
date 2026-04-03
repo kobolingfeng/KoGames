@@ -68,7 +68,7 @@ fn main() {
             games::backup_library,
             games::restore_backup,
             games::list_backups,
-            games::pick_random_game,
+
             games::get_library_stats,
             games::search_cover_online,
             games::fetch_igdb_metadata,

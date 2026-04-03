@@ -104,7 +104,6 @@ const en: Record<string, string> = {
   bs_most_played_label: 'Most Played',
   bs_platform_dist: 'Platform Distribution',
   // New features
-  bs_random_game: 'Pick Random',
   bs_backup: 'Backup Library',
   bs_restore: 'Restore Backup',
   bs_backup_success: 'Backup saved',

@@ -1168,27 +1168,6 @@
     }
   }
 
-  // 随机游戏选择
-  async function pickRandomGame() {
-    try {
-      const game = await invoke<Game | null>('pick_random_game', {
-        filterPlatform: filterPlatform !== 'all' ? filterPlatform : null,
-        filterStatus: filterStatus !== 'all' ? filterStatus : null,
-        excludeHidden: true,
-      });
-      if (game) {
-        detailGame = game;
-        currentView = 'detail';
-        playSound('confirm');
-        showBsToast(`🎲 ${game.name}`);
-      } else {
-        showBsToast(t('bs_no_games_found') || 'No games found');
-        playSound('error');
-      }
-    } catch (e) {
-      console.error('Random pick failed:', e);
-    }
-  }
 
   // 备份库
   async function handleBackup() {
@@ -2432,21 +2411,6 @@
         <span class="cc-status">{homePreviewMode === 'video' ? '🎬' : '🖼️'}</span>
       </button>
 
-      <!-- 随机游戏 -->
-      <button class="cc-card" onclick={() => { controlCenterOpen = false; pickRandomGame(); }}>
-        <div class="cc-icon">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <rect x="1" y="1" width="22" height="22" rx="4"/>
-            <circle cx="8" cy="8" r="1.5" fill="currentColor"/>
-            <circle cx="16" cy="8" r="1.5" fill="currentColor"/>
-            <circle cx="12" cy="12" r="1.5" fill="currentColor"/>
-            <circle cx="8" cy="16" r="1.5" fill="currentColor"/>
-            <circle cx="16" cy="16" r="1.5" fill="currentColor"/>
-          </svg>
-        </div>
-        <span class="cc-label">{t('bs_random_game')}</span>
-        <span class="cc-status">🎲</span>
-      </button>
 
       <!-- 桌面模式 -->
       <button class="cc-card" onclick={onSwitchMode}>

@@ -104,7 +104,6 @@ const zh: Record<string, string> = {
   bs_most_played_label: '最常游玩',
   bs_platform_dist: '平台分布',
   // 新功能
-  bs_random_game: '随机选一个',
   bs_backup: '备份库',
   bs_restore: '恢复备份',
   bs_backup_success: '备份成功',
