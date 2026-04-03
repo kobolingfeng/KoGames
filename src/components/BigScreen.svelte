@@ -48,6 +48,7 @@
   let screenSaverEnabled = $state(true);
   let showSponsor = $state(false);
   let currentLang = $state(getLocale());
+  let settingsTab = $state<'stats' | 'preferences' | 'import' | 'data' | 'about' | 'system'>('stats');
 
   // Reactive t() that re-evaluates when currentLang changes
   const t = $derived.by(() => {
@@ -748,6 +749,8 @@
         onGamesChanged();
         showBsToast(t('bs_imported_count').replace('{count}', String(result.total)));
       }
+      // 后台下载缺失的封面
+      invoke('download_steam_covers').then(() => onGamesChanged()).catch(() => {});
     }).catch(() => {});
 
     window.addEventListener('keydown', handleKeyDown);
@@ -1202,7 +1205,7 @@
         {/each}
 
         <!-- 游戏库入口 -->
-        <button class="bigscreen-game-card library-card" class:focused={focusedIndex === displayGames.length} onclick={() => { focusedIndex = displayGames.length; }}>
+        <button class="bigscreen-game-card library-card" class:focused={focusedIndex === displayGames.length} onclick={() => { libraryFocusIndex = 0; currentView = 'library'; }}>
           <div class="card-image-wrapper">
             <div class="library-icon">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -1745,404 +1748,267 @@
       </div>
     </div>
 
-  <!-- 设置视图 -->
+  <!-- 设置视图 - PS5风格双栏布局 -->
   {:else if currentView === 'settings'}
     <div class="settings-view">
-      <div class="settings-header">
-        <button class="back-btn" onclick={() => currentView = 'home'} aria-label="{t('bs_cancel')}">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <path d="M19 12H5M12 19l-7-7 7-7"/>
-          </svg>
-        </button>
-        <h2>{t('bs_settings')}</h2>
-      </div>
-
-      <div class="settings-list">
-        <!-- 统计概览 -->
-        <div class="settings-group">
-          <h3 class="group-title">
+      <!-- 左侧分类导航栏 -->
+      <div class="settings-sidebar">
+        <div class="settings-sidebar-header">
+          <button class="back-btn" onclick={() => currentView = 'home'} aria-label="{t('bs_cancel')}">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M19 12H5M12 19l-7-7 7-7"/>
+            </svg>
+          </button>
+          <h2>{t('bs_settings')}</h2>
+        </div>
+        <nav class="settings-nav">
+          <button class="settings-nav-item" class:active={settingsTab === 'stats'} onclick={() => settingsTab = 'stats'}>
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <path d="M18 20V10"/><path d="M12 20V4"/><path d="M6 20v-6"/>
             </svg>
-            {t('bs_stats')}
-          </h3>
-          <div class="stats-dashboard">
-            <div class="stat-card">
-              <span class="stat-value">{stats.total}</span>
-              <span class="stat-label">{t('bs_total_games_label')}</span>
-            </div>
-            <div class="stat-card">
-              <span class="stat-value">{stats.totalHours}</span>
-              <span class="stat-label">{t('bs_total_hours_label')}</span>
-            </div>
-            <div class="stat-card accent">
-              <span class="stat-value">{stats.playing}</span>
-              <span class="stat-label">{t('bs_playing_label')}</span>
-            </div>
-            <div class="stat-card success">
-              <span class="stat-value">{stats.completed}</span>
-              <span class="stat-label">{t('bs_completed_label')}</span>
-            </div>
-            <div class="stat-card">
-              <span class="stat-value">{stats.backlog}</span>
-              <span class="stat-label">{t('bs_backlog_label')}</span>
-            </div>
-          </div>
-
-          {#if stats.mostPlayed.length > 0 && stats.mostPlayed[0].totalPlayTime}
-            <div class="most-played">
-              <h4>{t('bs_most_played_label')}</h4>
-              {#each stats.mostPlayed as game}
-                {#if game.totalPlayTime && game.totalPlayTime > 0}
-                  <div class="mp-item">
-                    <div class="mp-cover">
-                      {#if getCoverUrl(game.cover)}
-                        <img src={getCoverUrl(game.cover)} alt="" />
-                      {/if}
-                    </div>
-                    <span class="mp-name">{game.name}</span>
-                    <span class="mp-time">{formatPlayTime(game.totalPlayTime)}</span>
-                    <div class="mp-bar">
-                      <div class="mp-fill" style="width: {Math.min(100, (game.totalPlayTime / (stats.mostPlayed[0]?.totalPlayTime ?? 1)) * 100)}%"></div>
-                    </div>
-                  </div>
-                {/if}
-              {/each}
-            </div>
-          {/if}
-
-          {#if Object.keys(stats.platformCounts).length > 0}
-            <div class="platform-breakdown">
-              <h4>{t('bs_platform_dist')}</h4>
-              <div class="platform-bars">
-                {#each Object.entries(stats.platformCounts).sort((a, b) => b[1] - a[1]) as [platform, count]}
-                  <div class="pb-item">
-                    <span class="pb-label">{getPlatformLabel(platform)}</span>
-                    <div class="pb-bar">
-                      <div class="pb-fill" style="width: {Math.min(100, (count / stats.total) * 100)}%"></div>
-                    </div>
-                    <span class="pb-count">{count}</span>
-                  </div>
-                {/each}
-              </div>
-            </div>
-          {/if}
-        </div>
-
-        <!-- 偏好设置 -->
-        <div class="settings-group">
-          <h3 class="group-title">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <circle cx="12" cy="12" r="3"/>
-              <path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/>
-            </svg>
-            {t('bs_preferences')}
-          </h3>
-
-          <button class="settings-item" onclick={() => { soundEnabled = !soundEnabled; playSound('confirm'); }}>
-            <div class="settings-icon">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                {#if soundEnabled}
-                  <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/>
-                  <path d="M19.07 4.93a10 10 0 0 1 0 14.14M15.54 8.46a5 5 0 0 1 0 7.07"/>
-                {:else}
-                  <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/>
-                  <line x1="23" y1="9" x2="17" y2="15"/>
-                  <line x1="17" y1="9" x2="23" y2="15"/>
-                {/if}
-              </svg>
-            </div>
-            <div class="settings-text">
-              <h3>{t('bs_nav_sound')}</h3>
-              <p>{soundEnabled ? t('bs_nav_sound_on') : t('bs_nav_sound_off')}</p>
-            </div>
-            <div class="settings-toggle" class:active={soundEnabled}>
-              <div class="toggle-thumb"></div>
-            </div>
+            <span>{t('bs_stats')}</span>
           </button>
 
-          <button class="settings-item" onclick={() => { screenSaverEnabled = !screenSaverEnabled; resetIdleTimer(); }}>
-            <div class="settings-icon">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <rect x="2" y="3" width="20" height="14" rx="2" ry="2"/>
-                <line x1="8" y1="21" x2="16" y2="21"/>
-                <line x1="12" y1="17" x2="12" y2="21"/>
-              </svg>
-            </div>
-            <div class="settings-text">
-              <h3>{t('bs_screensaver')}</h3>
-              <p>{screenSaverEnabled ? t('bs_screensaver_on') : t('bs_screensaver_off')}</p>
-            </div>
-            <div class="settings-toggle" class:active={screenSaverEnabled}>
-              <div class="toggle-thumb"></div>
-            </div>
-          </button>
-
-          <button class="settings-item" onclick={toggleLanguage}>
-            <div class="settings-icon">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <circle cx="12" cy="12" r="10"/>
-                <line x1="2" y1="12" x2="22" y2="12"/>
-                <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/>
-              </svg>
-            </div>
-            <div class="settings-text">
-              <h3>{t('bs_language')}</h3>
-              <p>{currentLang === 'zh' ? t('bs_language_zh') : t('bs_language_en')}</p>
-            </div>
-            <svg class="settings-arrow" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <path d="M9 18l6-6-6-6"/>
-            </svg>
-          </button>
-        </div>
-
-        <!-- 导入游戏 -->
-        <div class="settings-group">
-          <h3 class="group-title">
+          <button class="settings-nav-item" class:active={settingsTab === 'import'} onclick={() => settingsTab = 'import'}>
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
               <polyline points="7 10 12 15 17 10"/>
               <line x1="12" y1="15" x2="12" y2="3"/>
             </svg>
-            {t('bs_import_games')}
-          </h3>
-
-          <button class="settings-item" onclick={handleImportSteam} disabled={isImporting}>
-            <div class="settings-icon">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2z"/>
-                <path d="M12 6v6l4 2"/>
-              </svg>
-            </div>
-            <div class="settings-text">
-              <h3>{t('bs_import_steam')}</h3>
-              <p>{isImporting ? t('bs_importing') : 'Steam'}</p>
-            </div>
-            <svg class="settings-arrow" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <path d="M9 18l6-6-6-6"/>
-            </svg>
+            <span>{t('bs_import_games')}</span>
           </button>
-
-          <button class="settings-item" onclick={handleImportAll} disabled={isImporting}>
-            <div class="settings-icon">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <rect x="2" y="3" width="20" height="14" rx="2" ry="2"/>
-                <line x1="8" y1="21" x2="16" y2="21"/>
-                <line x1="12" y1="17" x2="12" y2="21"/>
-              </svg>
-            </div>
-            <div class="settings-text">
-              <h3>{t('bs_import_all')}</h3>
-              <p>{isImporting ? t('bs_importing') : 'Epic / EA / Ubisoft / Xbox / GOG'}</p>
-            </div>
-            <svg class="settings-arrow" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <path d="M9 18l6-6-6-6"/>
-            </svg>
-          </button>
-        </div>
-
-        <!-- 数据管理 -->
-        <div class="settings-group">
-          <h3 class="group-title">
+          <button class="settings-nav-item" class:active={settingsTab === 'data'} onclick={() => settingsTab = 'data'}>
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
-              <polyline points="7 10 12 15 17 10"/>
-              <line x1="12" y1="15" x2="12" y2="3"/>
+              <ellipse cx="12" cy="5" rx="9" ry="3"/>
+              <path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"/>
+              <path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/>
             </svg>
-            {t('bs_data_management')}
-          </h3>
-
-          <button class="settings-item" onclick={pickRandomGame}>
-            <div class="settings-icon">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <rect x="1" y="1" width="22" height="22" rx="4"/>
-                <circle cx="8" cy="8" r="1.5" fill="currentColor"/>
-                <circle cx="16" cy="8" r="1.5" fill="currentColor"/>
-                <circle cx="12" cy="12" r="1.5" fill="currentColor"/>
-                <circle cx="8" cy="16" r="1.5" fill="currentColor"/>
-                <circle cx="16" cy="16" r="1.5" fill="currentColor"/>
-              </svg>
-            </div>
-            <div class="settings-text">
-              <h3>{t('bs_random_game')}</h3>
-              <p>🎲</p>
-            </div>
-            <svg class="settings-arrow" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <path d="M9 18l6-6-6-6"/>
-            </svg>
+            <span>{t('bs_data_management')}</span>
           </button>
-
-          <button class="settings-item" onclick={handleBackup}>
-            <div class="settings-icon">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/>
-                <polyline points="17 21 17 13 7 13 7 21"/>
-                <polyline points="7 3 7 8 15 8"/>
-              </svg>
-            </div>
-            <div class="settings-text">
-              <h3>{t('bs_backup')}</h3>
-              <p>ZIP</p>
-            </div>
-            <svg class="settings-arrow" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <path d="M9 18l6-6-6-6"/>
-            </svg>
-          </button>
-
-          <button class="settings-item" onclick={handleBatchMetadata} disabled={isFetchingMetadata}>
-            <div class="settings-icon">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
-                <polyline points="7 10 12 15 17 10"/>
-                <line x1="12" y1="15" x2="12" y2="3"/>
-              </svg>
-            </div>
-            <div class="settings-text">
-              <h3>{isFetchingMetadata ? '...' : (t('bs_auto_import') || 'Batch Metadata')}</h3>
-              <p>{t('bs_auto_import_desc') || 'Download metadata & covers for all games'}</p>
-            </div>
-            <svg class="settings-arrow" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <path d="M9 18l6-6-6-6"/>
-            </svg>
-          </button>
-
-          <button class="settings-item" onclick={handleExport}>
-            <div class="settings-icon">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
-                <polyline points="17 8 12 3 7 8"/>
-                <line x1="12" y1="3" x2="12" y2="15"/>
-              </svg>
-            </div>
-            <div class="settings-text">
-              <h3>{t('bs_export_library')}</h3>
-              <p>JSON</p>
-            </div>
-            <svg class="settings-arrow" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <path d="M9 18l6-6-6-6"/>
-            </svg>
-          </button>
-
-          <button class="settings-item" onclick={() => showHidden = !showHidden}>
-            <div class="settings-icon">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                {#if showHidden}
-                  <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/>
-                  <circle cx="12" cy="12" r="3"/>
-                {:else}
-                  <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94"/>
-                  <line x1="1" y1="1" x2="23" y2="23"/>
-                {/if}
-              </svg>
-            </div>
-            <div class="settings-text">
-              <h3>{t('bs_show_hidden')}</h3>
-              <p>{showHidden ? 'ON' : 'OFF'}</p>
-            </div>
-            <svg class="settings-arrow" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <path d="M9 18l6-6-6-6"/>
-            </svg>
-          </button>
-        </div>
-
-        <!-- 关于 & 赞助 -->
-        <div class="settings-group">
-          <h3 class="group-title">
+          <button class="settings-nav-item" class:active={settingsTab === 'about'} onclick={() => settingsTab = 'about'}>
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <circle cx="12" cy="12" r="10"/>
               <path d="M12 16v-4"/>
               <path d="M12 8h.01"/>
             </svg>
-            {t('bs_about')}
-          </h3>
-
-          <button class="settings-item" onclick={() => invoke('open_url', { url: 'https://github.com/kobolingfeng/KoGames' })}>
-            <div class="settings-icon">
-              <svg viewBox="0 0 24 24" fill="currentColor">
-                <path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0 0 24 12c0-6.63-5.37-12-12-12z"/>
-              </svg>
-            </div>
-            <div class="settings-text">
-              <h3>{t('bs_github_repo')}</h3>
-              <p>{t('bs_github_star')}</p>
-            </div>
-            <svg class="settings-arrow" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <path d="M9 18l6-6-6-6"/>
-            </svg>
+            <span>{t('bs_about')}</span>
           </button>
 
-          <button class="settings-item" onclick={() => { showSponsor = !showSponsor; }}>
-            <div class="settings-icon">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/>
-              </svg>
-            </div>
-            <div class="settings-text">
-              <h3>{t('bs_sponsor')}</h3>
-              <p>{t('bs_sponsor_desc')}</p>
-            </div>
-            <svg class="settings-arrow" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <path d="M9 18l6-6-6-6"/>
-            </svg>
-          </button>
+        </nav>
+      </div>
 
-          {#if showSponsor}
-            <div class="sponsor-panel">
-              <div class="sponsor-grid">
-                <div class="sponsor-card">
-                  <h4>{t('bs_wechat_donate')}</h4>
-                  <img src="/docs/wechat_donate.png" alt="WeChat Donate" class="sponsor-qr" />
-                </div>
-                <div class="sponsor-card">
-                  <h4>{t('bs_ldxp_donate')}</h4>
-                  <img src="/docs/ldxp_qrcode.png" alt="LDXP QR" class="sponsor-qr" />
-                </div>
-                <div class="sponsor-card">
-                  <h4>{t('bs_paypal_donate')}</h4>
-                  <a href="#" class="paypal-link" onclick={(e) => { e.preventDefault(); invoke('open_url', { url: 'https://paypal.me/koboling' }); }}>
-                    paypal.me/koboling
-                  </a>
-                </div>
+      <!-- 右侧内容面板 -->
+      <div class="settings-content">
+        {#if settingsTab === 'stats'}
+          <div class="settings-panel" >
+            <div class="stats-dashboard">
+              <div class="stat-card">
+                <span class="stat-value">{stats.total}</span>
+                <span class="stat-label">{t('bs_total_games_label')}</span>
+              </div>
+              <div class="stat-card">
+                <span class="stat-value">{stats.totalHours}</span>
+                <span class="stat-label">{t('bs_total_hours_label')}</span>
+              </div>
+              <div class="stat-card accent">
+                <span class="stat-value">{stats.playing}</span>
+                <span class="stat-label">{t('bs_playing_label')}</span>
+              </div>
+              <div class="stat-card success">
+                <span class="stat-value">{stats.completed}</span>
+                <span class="stat-label">{t('bs_completed_label')}</span>
+              </div>
+              <div class="stat-card">
+                <span class="stat-value">{stats.backlog}</span>
+                <span class="stat-label">{t('bs_backlog_label')}</span>
               </div>
             </div>
-          {/if}
-        </div>
 
-        <!-- 模式切换 & 退出 -->
-        <div class="settings-group">
-          <button class="settings-item" onclick={onSwitchMode}>
-            <div class="settings-icon">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <rect x="2" y="3" width="20" height="14" rx="2" ry="2"/>
-                <line x1="8" y1="21" x2="16" y2="21"/>
-                <line x1="12" y1="17" x2="12" y2="21"/>
+            {#if stats.mostPlayed.length > 0 && stats.mostPlayed[0].totalPlayTime}
+              <div class="most-played">
+                <h4>{t('bs_most_played_label')}</h4>
+                {#each stats.mostPlayed as game}
+                  {#if game.totalPlayTime && game.totalPlayTime > 0}
+                    <div class="mp-item">
+                      <div class="mp-cover">
+                        {#if getCoverUrl(game.cover)}
+                          <img src={getCoverUrl(game.cover)} alt="" />
+                        {/if}
+                      </div>
+                      <span class="mp-name">{game.name}</span>
+                      <span class="mp-time">{formatPlayTime(game.totalPlayTime)}</span>
+                      <div class="mp-bar">
+                        <div class="mp-fill" style="width: {Math.min(100, (game.totalPlayTime / (stats.mostPlayed[0]?.totalPlayTime ?? 1)) * 100)}%"></div>
+                      </div>
+                    </div>
+                  {/if}
+                {/each}
+              </div>
+            {/if}
+
+            {#if Object.keys(stats.platformCounts).length > 0}
+              <div class="platform-breakdown">
+                <h4>{t('bs_platform_dist')}</h4>
+                <div class="platform-bars">
+                  {#each Object.entries(stats.platformCounts).sort((a, b) => b[1] - a[1]) as [platform, count]}
+                    <div class="pb-item">
+                      <span class="pb-label">{getPlatformLabel(platform)}</span>
+                      <div class="pb-bar">
+                        <div class="pb-fill" style="width: {Math.min(100, (count / stats.total) * 100)}%"></div>
+                      </div>
+                      <span class="pb-count">{count}</span>
+                    </div>
+                  {/each}
+                </div>
+              </div>
+            {/if}
+          </div>
+
+        {:else if settingsTab === 'import'}
+          <div class="settings-panel">
+            <button class="settings-item" onclick={handleImportSteam} disabled={isImporting}>
+              <div class="settings-icon">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2z"/>
+                  <path d="M12 6v6l4 2"/>
+                </svg>
+              </div>
+              <div class="settings-text">
+                <h3>{t('bs_import_steam')}</h3>
+                <p>{isImporting ? t('bs_importing') : 'Steam'}</p>
+              </div>
+              <svg class="settings-arrow" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M9 18l6-6-6-6"/>
               </svg>
-            </div>
-            <div class="settings-text">
-              <h3>{t('bs_desktop_mode') || 'Desktop Mode'}</h3>
-              <p>{t('bs_desktop_mode_desc') || 'Switch to compact desktop layout'}</p>
-            </div>
-            <svg class="settings-arrow" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <path d="M9 18l6-6-6-6"/>
-            </svg>
-          </button>
-          <button class="settings-item exit-btn" onclick={onExit}>
-            <div class="settings-icon">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/>
-                <polyline points="16 17 21 12 16 7"/>
-                <line x1="21" y1="12" x2="9" y2="12"/>
+            </button>
+
+            <button class="settings-item" onclick={handleImportAll} disabled={isImporting}>
+              <div class="settings-icon">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <rect x="2" y="3" width="20" height="14" rx="2" ry="2"/>
+                  <line x1="8" y1="21" x2="16" y2="21"/>
+                  <line x1="12" y1="17" x2="12" y2="21"/>
+                </svg>
+              </div>
+              <div class="settings-text">
+                <h3>{t('bs_import_all')}</h3>
+                <p>{isImporting ? t('bs_importing') : 'Epic / EA / Ubisoft / Xbox / GOG'}</p>
+              </div>
+              <svg class="settings-arrow" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M9 18l6-6-6-6"/>
               </svg>
-            </div>
-            <div class="settings-text">
-              <h3>{t('bs_exit_app')}</h3>
-              <p>{t('bs_back_to_desktop')}</p>
-            </div>
-            <svg class="settings-arrow" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <path d="M9 18l6-6-6-6"/>
-            </svg>
-          </button>
-        </div>
+            </button>
+
+            <button class="settings-item" onclick={handleBatchMetadata} disabled={isFetchingMetadata}>
+              <div class="settings-icon">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                  <polyline points="7 10 12 15 17 10"/>
+                  <line x1="12" y1="15" x2="12" y2="3"/>
+                </svg>
+              </div>
+              <div class="settings-text">
+                <h3>{isFetchingMetadata ? '...' : (t('bs_auto_import') || 'Batch Metadata')}</h3>
+                <p>{t('bs_auto_import_desc') || 'Download metadata & covers for all games'}</p>
+              </div>
+              <svg class="settings-arrow" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M9 18l6-6-6-6"/>
+              </svg>
+            </button>
+          </div>
+
+        {:else if settingsTab === 'data'}
+          <div class="settings-panel">
+            <button class="settings-item" onclick={handleBackup}>
+              <div class="settings-icon">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/>
+                  <polyline points="17 21 17 13 7 13 7 21"/>
+                  <polyline points="7 3 7 8 15 8"/>
+                </svg>
+              </div>
+              <div class="settings-text">
+                <h3>{t('bs_backup')}</h3>
+                <p>ZIP</p>
+              </div>
+              <svg class="settings-arrow" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M9 18l6-6-6-6"/>
+              </svg>
+            </button>
+
+            <button class="settings-item" onclick={handleExport}>
+              <div class="settings-icon">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                  <polyline points="17 8 12 3 7 8"/>
+                  <line x1="12" y1="3" x2="12" y2="15"/>
+                </svg>
+              </div>
+              <div class="settings-text">
+                <h3>{t('bs_export_library')}</h3>
+                <p>JSON</p>
+              </div>
+              <svg class="settings-arrow" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M9 18l6-6-6-6"/>
+              </svg>
+            </button>
+          </div>
+
+        {:else if settingsTab === 'about'}
+          <div class="settings-panel">
+            <button class="settings-item" onclick={() => invoke('open_url', { url: 'https://github.com/kobolingfeng/KoGames' })}>
+              <div class="settings-icon">
+                <svg viewBox="0 0 24 24" fill="currentColor">
+                  <path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0 0 24 12c0-6.63-5.37-12-12-12z"/>
+                </svg>
+              </div>
+              <div class="settings-text">
+                <h3>{t('bs_github_repo')}</h3>
+                <p>{t('bs_github_star')}</p>
+              </div>
+              <svg class="settings-arrow" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M9 18l6-6-6-6"/>
+              </svg>
+            </button>
+
+            <button class="settings-item" onclick={() => { showSponsor = !showSponsor; }}>
+              <div class="settings-icon">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/>
+                </svg>
+              </div>
+              <div class="settings-text">
+                <h3>{t('bs_sponsor')}</h3>
+                <p>{t('bs_sponsor_desc')}</p>
+              </div>
+              <svg class="settings-arrow" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M9 18l6-6-6-6"/>
+              </svg>
+            </button>
+
+            {#if showSponsor}
+              <div class="sponsor-panel">
+                <div class="sponsor-grid">
+                  <div class="sponsor-card">
+                    <h4>{t('bs_wechat_donate')}</h4>
+                    <img src="/docs/wechat_donate.png" alt="WeChat Donate" class="sponsor-qr" />
+                  </div>
+                  <div class="sponsor-card">
+                    <h4>{t('bs_ldxp_donate')}</h4>
+                    <img src="/docs/ldxp_qrcode.png" alt="LDXP QR" class="sponsor-qr" />
+                  </div>
+                  <div class="sponsor-card">
+                    <h4>{t('bs_paypal_donate')}</h4>
+                    <a href="#" class="paypal-link" onclick={(e) => { e.preventDefault(); invoke('open_url', { url: 'https://paypal.me/koboling' }); }}>
+                      paypal.me/koboling
+                    </a>
+                  </div>
+                </div>
+              </div>
+            {/if}
+          </div>
+
+        {/if}
       </div>
     </div>
 
@@ -2204,7 +2070,7 @@
     </div>
   {/if}
 
-  <!-- 控制中心 -->
+  <!-- 控制中心 - PS5风格 -->
   <div class="control-center" class:open={controlCenterOpen}>
     <div class="cc-header">
       <h3>{t('bs_control_center')}</h3>
@@ -2216,15 +2082,123 @@
     </div>
 
     <div class="cc-grid">
-      <div class="cc-card">
+      <!-- 音效开关 -->
+      <button class="cc-card" class:cc-active={soundEnabled} onclick={() => { soundEnabled = !soundEnabled; playSound('confirm'); }}>
+        <div class="cc-icon">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            {#if soundEnabled}
+              <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/>
+              <path d="M19.07 4.93a10 10 0 0 1 0 14.14M15.54 8.46a5 5 0 0 1 0 7.07"/>
+            {:else}
+              <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/>
+              <line x1="23" y1="9" x2="17" y2="15"/>
+              <line x1="17" y1="9" x2="23" y2="15"/>
+            {/if}
+          </svg>
+        </div>
+        <span class="cc-label">{t('bs_nav_sound')}</span>
+        <span class="cc-status">{soundEnabled ? 'ON' : 'OFF'}</span>
+      </button>
+
+      <!-- 屏保开关 -->
+      <button class="cc-card" class:cc-active={screenSaverEnabled} onclick={() => { screenSaverEnabled = !screenSaverEnabled; resetIdleTimer(); }}>
+        <div class="cc-icon">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"/>
+          </svg>
+        </div>
+        <span class="cc-label">{t('bs_screensaver')}</span>
+        <span class="cc-status">{screenSaverEnabled ? 'ON' : 'OFF'}</span>
+      </button>
+
+      <!-- 语言切换 -->
+      <button class="cc-card" onclick={toggleLanguage}>
+        <div class="cc-icon">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <circle cx="12" cy="12" r="10"/>
+            <line x1="2" y1="12" x2="22" y2="12"/>
+            <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/>
+          </svg>
+        </div>
+        <span class="cc-label">{t('bs_language')}</span>
+        <span class="cc-status">{currentLang === 'zh' ? '中文' : 'EN'}</span>
+      </button>
+
+      <!-- 显示隐藏游戏 -->
+      <button class="cc-card" class:cc-active={showHidden} onclick={() => showHidden = !showHidden}>
+        <div class="cc-icon">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            {#if showHidden}
+              <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/>
+              <circle cx="12" cy="12" r="3"/>
+            {:else}
+              <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94"/>
+              <line x1="1" y1="1" x2="23" y2="23"/>
+            {/if}
+          </svg>
+        </div>
+        <span class="cc-label">{t('bs_show_hidden')}</span>
+        <span class="cc-status">{showHidden ? 'ON' : 'OFF'}</span>
+      </button>
+
+      <!-- 随机游戏 -->
+      <button class="cc-card" onclick={() => { controlCenterOpen = false; pickRandomGame(); }}>
+        <div class="cc-icon">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <rect x="1" y="1" width="22" height="22" rx="4"/>
+            <circle cx="8" cy="8" r="1.5" fill="currentColor"/>
+            <circle cx="16" cy="8" r="1.5" fill="currentColor"/>
+            <circle cx="12" cy="12" r="1.5" fill="currentColor"/>
+            <circle cx="8" cy="16" r="1.5" fill="currentColor"/>
+            <circle cx="16" cy="16" r="1.5" fill="currentColor"/>
+          </svg>
+        </div>
+        <span class="cc-label">{t('bs_random_game')}</span>
+        <span class="cc-status">🎲</span>
+      </button>
+
+      <!-- 桌面模式 -->
+      <button class="cc-card" onclick={onSwitchMode}>
+        <div class="cc-icon">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <rect x="2" y="3" width="20" height="14" rx="2" ry="2"/>
+            <line x1="8" y1="21" x2="16" y2="21"/>
+            <line x1="12" y1="17" x2="12" y2="21"/>
+          </svg>
+        </div>
+        <span class="cc-label">{t('bs_desktop_mode') || 'Desktop'}</span>
+        <span class="cc-status">→</span>
+      </button>
+
+      <!-- 电池状态 -->
+      <div class="cc-card cc-battery" class:cc-charging={isCharging}>
+        <div class="cc-icon">
+          {#if isAC}
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M12 2v6M8 2v6M16 2v6M8 8h8a4 4 0 0 1 4 4v2a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2v-2a4 4 0 0 1 4-4ZM12 16v6"/>
+            </svg>
+          {:else}
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <rect x="1" y="6" width="18" height="12" rx="2" ry="2"/>
+              <line x1="23" y1="13" x2="23" y2="11"/>
+            </svg>
+          {/if}
+        </div>
         <span class="cc-label">{t('bs_battery')}</span>
-        <div class="cc-value">{batteryPercent}%</div>
-        <span class="cc-status">{isCharging ? t('bs_charging') : t('bs_on_battery')}</span>
+        <span class="cc-status">{isAC ? 'AC' : `${batteryPercent}%`} {isCharging ? '⚡' : ''}</span>
       </div>
 
-      <button class="cc-card danger" onclick={onExit}>
+      <!-- 退出 -->
+      <button class="cc-card cc-danger" onclick={onExit}>
+        <div class="cc-icon">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/>
+            <polyline points="16 17 21 12 16 7"/>
+            <line x1="21" y1="12" x2="9" y2="12"/>
+          </svg>
+        </div>
         <span class="cc-label">{t('bs_exit')}</span>
-        <div class="cc-value">{t('bs_exit_app')}</div>
+        <span class="cc-status">{t('bs_exit_app')}</span>
       </button>
     </div>
   </div>
@@ -2410,7 +2384,7 @@
   .stats-dot { color: rgba(255,255,255,0.2); }
 
   /* 资源库 */
-  .library-view, .settings-view { position: fixed; inset: 0; z-index: 60; background: #0d0d14; display: flex; flex-direction: column; animation: slideFromRight 0.4s cubic-bezier(0.16, 1, 0.3, 1); }
+  .library-view { position: fixed; inset: 0; z-index: 60; background: #0d0d14; display: flex; flex-direction: column; animation: slideFromRight 0.4s cubic-bezier(0.16, 1, 0.3, 1); }
   .library-bg {
     position: absolute; inset: 0; z-index: 0; overflow: hidden;
     transition: opacity 0.6s ease;
@@ -2424,8 +2398,8 @@
   .library-view .filter-bar,
   .library-view .library-grid { position: relative; z-index: 1; }
   @keyframes slideFromRight { from { transform: translateX(100%); } to { transform: translateX(0); } }
-  .library-header, .settings-header { display: flex; align-items: center; gap: 24px; padding: 40px 64px 16px; }
-  .library-header h2, .settings-header h2 { font-size: 32px; font-weight: 300; }
+  .library-header { display: flex; align-items: center; gap: 24px; padding: 40px 64px 16px; }
+  .library-header h2 { font-size: 32px; font-weight: 300; }
   .library-count { font-size: 16px; color: rgba(255,255,255,0.3); font-weight: 400; margin-left: 8px; }
   .back-btn { width: 48px; height: 48px; background: rgba(255,255,255,0.05); border: none; border-radius: 50%; display: flex; align-items: center; justify-content: center; cursor: pointer; transition: all 0.3s; flex-shrink: 0; }
   .back-btn:hover { background: rgba(255,255,255,0.1); }
@@ -2531,94 +2505,159 @@
   .prop-label { display: block; font-size: 13px; font-weight: 500; color: rgba(255,255,255,0.7); margin-bottom: 2px; }
   .prop-value { display: block; font-size: 12px; color: rgba(255,255,255,0.35); word-break: break-all; font-family: ui-monospace, monospace; }
 
-  /* 设置 */
-  .settings-list { flex: 1; overflow-y: auto; padding: 32px 64px; max-width: 800px; }
-  .settings-group { margin-bottom: 32px; }
-  .group-title { display: flex; align-items: center; gap: 12px; font-size: 14px; font-weight: 600; color: rgba(255,255,255,0.5); text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 16px; padding-left: 8px; }
-  .group-title svg { width: 18px; height: 18px; }
-  .settings-item { width: 100%; display: flex; align-items: center; gap: 24px; padding: 24px; background: none; border: none; border-radius: 16px; cursor: pointer; transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1); text-align: left; color: inherit; }
-  .settings-item:hover { background: rgba(255,255,255,0.04); transform: translateX(4px); }
+  /* 设置 - PS5风格双栏布局 */
+  .settings-view {
+    position: fixed; inset: 0; z-index: 60;
+    background: #0d0d14;
+    display: flex; flex-direction: row;
+    animation: slideFromRight 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+  }
+  .settings-sidebar {
+    width: 340px; flex-shrink: 0;
+    display: flex; flex-direction: column;
+    background: rgba(255,255,255,0.02);
+    border-right: 1px solid rgba(255,255,255,0.06);
+    padding: 48px 0 48px 0;
+  }
+  .settings-sidebar-header {
+    display: flex; align-items: center; gap: 20px;
+    padding: 0 32px 40px;
+  }
+  .settings-sidebar-header h2 {
+    font-size: 28px; font-weight: 300; color: #fff;
+  }
+  .settings-nav {
+    display: flex; flex-direction: column; gap: 4px;
+    padding: 0 16px; flex: 1;
+  }
+  .settings-nav-item {
+    display: flex; align-items: center; gap: 16px;
+    padding: 16px 20px; border-radius: 14px;
+    background: none; border: none;
+    color: rgba(255,255,255,0.5); font-size: 16px; font-weight: 400;
+    cursor: pointer; transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+    text-align: left; position: relative;
+  }
+  .settings-nav-item svg {
+    width: 22px; height: 22px; flex-shrink: 0;
+    transition: all 0.25s;
+  }
+  .settings-nav-item span {
+    transition: all 0.25s;
+  }
+  .settings-nav-item:hover {
+    background: rgba(255,255,255,0.04);
+    color: rgba(255,255,255,0.8);
+  }
+  .settings-nav-item.active {
+    background: rgba(255,255,255,0.08);
+    color: #fff; font-weight: 500;
+  }
+  .settings-nav-item.active::before {
+    content: ''; position: absolute; left: 0; top: 50%;
+    transform: translateY(-50%);
+    width: 4px; height: 24px; border-radius: 2px;
+    background: #6366f1;
+  }
+  .settings-nav-item.active svg { color: #818cf8; }
+
+  .settings-content {
+    flex: 1; overflow-y: auto;
+    padding: 48px 64px 64px;
+    animation: settingsFadeIn 0.3s ease;
+  }
+  @keyframes settingsFadeIn { from { opacity: 0; transform: translateX(12px); } to { opacity: 1; transform: translateX(0); } }
+  .settings-panel {
+    max-width: 720px;
+  }
+  .settings-item {
+    width: 100%; display: flex; align-items: center; gap: 24px;
+    padding: 20px 24px; background: rgba(255,255,255,0.03);
+    border: 1px solid rgba(255,255,255,0.04); border-radius: 16px;
+    cursor: pointer; transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+    text-align: left; color: inherit; margin-bottom: 8px;
+  }
+  .settings-item:hover { background: rgba(255,255,255,0.06); border-color: rgba(255,255,255,0.08); transform: translateX(4px); }
   .settings-item:disabled { opacity: 0.5; cursor: not-allowed; }
-  .settings-icon { width: 48px; height: 48px; background: rgba(255,255,255,0.1); border-radius: 50%; display: flex; align-items: center; justify-content: center; transition: all 0.3s; flex-shrink: 0; }
-  .settings-item:hover .settings-icon { transform: scale(1.1); }
-  .settings-icon svg { width: 24px; height: 24px; color: rgba(255,255,255,0.8); }
+  .settings-icon {
+    width: 48px; height: 48px;
+    background: rgba(255,255,255,0.06); border-radius: 14px;
+    display: flex; align-items: center; justify-content: center;
+    transition: all 0.3s; flex-shrink: 0;
+  }
+  .settings-item:hover .settings-icon { background: rgba(255,255,255,0.1); transform: scale(1.05); }
+  .settings-icon svg { width: 24px; height: 24px; color: rgba(255,255,255,0.7); }
   .settings-text { flex: 1; }
-  .settings-text h3 { font-size: 20px; font-weight: 500; margin-bottom: 4px; }
-  .settings-text p { font-size: 14px; color: rgba(255,255,255,0.4); }
-  .settings-arrow { width: 24px; height: 24px; color: rgba(255,255,255,0.2); transition: all 0.3s; flex-shrink: 0; }
-  .settings-item:hover .settings-arrow { color: #fff; transform: translateX(8px); }
+  .settings-text h3 { font-size: 18px; font-weight: 500; margin-bottom: 4px; color: rgba(255,255,255,0.9); }
+  .settings-text p { font-size: 13px; color: rgba(255,255,255,0.35); }
+  .settings-arrow { width: 20px; height: 20px; color: rgba(255,255,255,0.15); transition: all 0.3s; flex-shrink: 0; }
+  .settings-item:hover .settings-arrow { color: rgba(255,255,255,0.5); transform: translateX(4px); }
 
   /* 统计仪表板 */
   .stats-dashboard {
-    display: grid; grid-template-columns: repeat(5, 1fr); gap: 12px;
-    margin-bottom: 24px;
+    display: grid; grid-template-columns: repeat(5, 1fr); gap: 14px;
+    margin-bottom: 32px;
   }
   .stat-card {
-    background: rgba(255, 255, 255, 0.04); border-radius: 14px;
-    padding: 20px 16px; text-align: center;
+    background: rgba(255, 255, 255, 0.04); border-radius: 16px;
+    padding: 24px 16px; text-align: center;
     border: 1px solid rgba(255, 255, 255, 0.05);
     transition: all 0.3s;
   }
   .stat-card:hover { background: rgba(255, 255, 255, 0.06); transform: translateY(-2px); }
-  .stat-value { display: block; font-size: 32px; font-weight: 600; color: #fff; line-height: 1.2; }
-  .stat-label { display: block; font-size: 12px; color: rgba(255, 255, 255, 0.4); margin-top: 6px; letter-spacing: 0.5px; }
+  .stat-value { display: block; font-size: 36px; font-weight: 600; color: #fff; line-height: 1.2; }
+  .stat-label { display: block; font-size: 12px; color: rgba(255, 255, 255, 0.4); margin-top: 8px; letter-spacing: 0.5px; }
   .stat-card.accent .stat-value { color: #818cf8; }
   .stat-card.success .stat-value { color: #34d399; }
 
   /* 最常游玩 */
-  .most-played, .platform-breakdown { margin-bottom: 24px; }
-  .most-played h4, .platform-breakdown h4 { font-size: 13px; font-weight: 500; color: rgba(255, 255, 255, 0.4); margin-bottom: 12px; text-transform: uppercase; letter-spacing: 0.5px; }
+  .most-played, .platform-breakdown { margin-bottom: 32px; }
+  .most-played h4, .platform-breakdown h4 { font-size: 13px; font-weight: 500; color: rgba(255, 255, 255, 0.4); margin-bottom: 16px; text-transform: uppercase; letter-spacing: 0.5px; }
   .mp-item {
-    display: grid; grid-template-columns: 40px 1fr auto 100px;
-    align-items: center; gap: 12px; padding: 8px 0;
+    display: grid; grid-template-columns: 44px 1fr auto 120px;
+    align-items: center; gap: 14px; padding: 10px 0;
   }
-  .mp-cover { width: 40px; height: 40px; border-radius: 8px; overflow: hidden; background: rgba(255,255,255,0.05); }
+  .mp-cover { width: 44px; height: 44px; border-radius: 10px; overflow: hidden; background: rgba(255,255,255,0.05); }
   .mp-cover img { width: 100%; height: 100%; object-fit: cover; }
-  .mp-name { font-size: 14px; font-weight: 500; color: rgba(255, 255, 255, 0.8); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .mp-time { font-size: 12px; color: rgba(255, 255, 255, 0.4); white-space: nowrap; }
+  .mp-name { font-size: 15px; font-weight: 500; color: rgba(255, 255, 255, 0.8); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .mp-time { font-size: 13px; color: rgba(255, 255, 255, 0.4); white-space: nowrap; }
   .mp-bar { height: 4px; background: rgba(255, 255, 255, 0.06); border-radius: 2px; overflow: hidden; }
   .mp-fill { height: 100%; background: linear-gradient(90deg, #6366f1, #818cf8); border-radius: 2px; transition: width 0.6s ease; }
 
   /* 平台分布 */
-  .platform-bars { display: flex; flex-direction: column; gap: 8px; }
-  .pb-item { display: grid; grid-template-columns: 80px 1fr 40px; align-items: center; gap: 12px; }
-  .pb-label { font-size: 13px; color: rgba(255, 255, 255, 0.6); text-transform: capitalize; }
+  .platform-bars { display: flex; flex-direction: column; gap: 10px; }
+  .pb-item { display: grid; grid-template-columns: 90px 1fr 40px; align-items: center; gap: 14px; }
+  .pb-label { font-size: 14px; color: rgba(255, 255, 255, 0.6); text-transform: capitalize; }
   .pb-bar { height: 6px; background: rgba(255, 255, 255, 0.06); border-radius: 3px; overflow: hidden; }
   .pb-fill { height: 100%; background: linear-gradient(90deg, rgba(99, 102, 241, 0.6), rgba(99, 102, 241, 0.9)); border-radius: 3px; transition: width 0.6s ease; }
-  .pb-count { font-size: 13px; color: rgba(255, 255, 255, 0.5); text-align: right; }
+  .pb-count { font-size: 14px; color: rgba(255, 255, 255, 0.5); text-align: right; }
 
-  /* 开关切换 */
-  .settings-toggle {
-    width: 48px; height: 28px; border-radius: 14px;
-    background: rgba(255, 255, 255, 0.1); position: relative;
-    transition: background 0.3s; flex-shrink: 0; cursor: pointer;
-  }
-  .settings-toggle.active { background: rgba(99, 102, 241, 0.6); }
-  .toggle-thumb {
-    width: 22px; height: 22px; border-radius: 50%;
-    background: #fff; position: absolute; top: 3px; left: 3px;
-    transition: transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
-    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
-  }
-  .settings-toggle.active .toggle-thumb { transform: translateX(20px); }
-
-  /* 控制中心 */
-  .control-center { position: absolute; bottom: 0; left: 0; right: 0; z-index: 100; background: rgba(18,18,28,0.92); backdrop-filter: blur(40px) saturate(1.2); border-top-left-radius: 48px; border-top-right-radius: 48px; padding: 40px; transform: translateY(100%); opacity: 0; transition: all 0.5s cubic-bezier(0.16, 1, 0.3, 1); box-shadow: 0 -20px 80px rgba(0,0,0,0.6); border-top: 1px solid rgba(255,255,255,0.08); }
+  /* 控制中心 - PS5风格 */
+  .control-center { position: absolute; bottom: 0; left: 0; right: 0; z-index: 100; background: rgba(18,18,28,0.95); backdrop-filter: blur(60px) saturate(1.4); border-top-left-radius: 32px; border-top-right-radius: 32px; padding: 32px 48px 48px; transform: translateY(100%); opacity: 0; transition: all 0.5s cubic-bezier(0.16, 1, 0.3, 1); box-shadow: 0 -20px 80px rgba(0,0,0,0.6); border-top: 1px solid rgba(255,255,255,0.08); }
   .control-center.open { transform: translateY(0); opacity: 1; }
-  .cc-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 32px; max-width: 1400px; margin-left: auto; margin-right: auto; }
-  .cc-header h3 { font-size: 24px; font-weight: 300; letter-spacing: 0.05em; }
-  .cc-close { width: 40px; height: 40px; background: rgba(255,255,255,0.1); border: none; border-radius: 50%; display: flex; align-items: center; justify-content: center; cursor: pointer; transition: all 0.3s; }
-  .cc-close:hover { background: rgba(255,255,255,0.2); }
-  .cc-close svg { width: 24px; height: 24px; color: #fff; }
-  .cc-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 24px; max-width: 1400px; margin: 0 auto; padding-bottom: 32px; }
-  .cc-card { background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.06); border-radius: 24px; padding: 24px; display: flex; flex-direction: column; gap: 8px; cursor: pointer; transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1); backdrop-filter: blur(10px); }
+  .cc-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 28px; max-width: 1200px; margin-left: auto; margin-right: auto; }
+  .cc-header h3 { font-size: 20px; font-weight: 500; letter-spacing: 0.05em; color: rgba(255,255,255,0.9); }
+  .cc-close { width: 36px; height: 36px; background: rgba(255,255,255,0.08); border: none; border-radius: 50%; display: flex; align-items: center; justify-content: center; cursor: pointer; transition: all 0.3s; }
+  .cc-close:hover { background: rgba(255,255,255,0.15); }
+  .cc-close svg { width: 20px; height: 20px; color: #fff; }
+  .cc-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; max-width: 1200px; margin: 0 auto; }
+  .cc-card { background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.06); border-radius: 20px; padding: 20px; display: flex; flex-direction: column; align-items: center; gap: 10px; cursor: pointer; transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1); text-align: center; position: relative; overflow: hidden; }
+  .cc-card::before { content: ''; position: absolute; inset: 0; border-radius: 20px; opacity: 0; transition: opacity 0.3s; background: radial-gradient(ellipse at 50% 0%, rgba(99,102,241,0.15), transparent 70%); }
   .cc-card:hover { background: rgba(255,255,255,0.08); transform: translateY(-2px); box-shadow: 0 8px 30px rgba(0,0,0,0.3); }
-  .cc-card.danger { background: rgba(239, 68, 68, 0.1); border-color: rgba(239, 68, 68, 0.2); }
-  .cc-card.danger:hover { background: rgba(239, 68, 68, 0.2); }
-  .cc-label { font-size: 12px; color: rgba(255,255,255,0.6); text-transform: uppercase; letter-spacing: 0.1em; font-weight: 700; }
-  .cc-card.danger .cc-label { color: rgba(239, 68, 68, 0.8); }
-  .cc-value { font-size: 24px; font-weight: 300; }
-  .cc-status { font-size: 14px; color: #22c55e; }
+  .cc-card:hover::before { opacity: 1; }
+  .cc-card.cc-active { background: rgba(99,102,241,0.12); border-color: rgba(99,102,241,0.3); }
+  .cc-card.cc-active .cc-icon { color: #818cf8; }
+  .cc-card.cc-active .cc-status { color: #818cf8; }
+  .cc-card.cc-danger { background: rgba(239,68,68,0.06); border-color: rgba(239,68,68,0.15); }
+  .cc-card.cc-danger:hover { background: rgba(239,68,68,0.15); }
+  .cc-card.cc-danger .cc-icon { color: rgba(239,68,68,0.8); }
+  .cc-card.cc-danger .cc-label { color: rgba(239,68,68,0.7); }
+  .cc-card.cc-charging .cc-icon { color: #22c55e; }
+  .cc-card.cc-charging .cc-status { color: #22c55e; }
+  .cc-icon { width: 32px; height: 32px; color: rgba(255,255,255,0.7); transition: color 0.3s; }
+  .cc-icon svg { width: 100%; height: 100%; }
+  .cc-label { font-size: 12px; color: rgba(255,255,255,0.5); font-weight: 500; letter-spacing: 0.04em; }
+  .cc-status { font-size: 13px; color: rgba(255,255,255,0.8); font-weight: 600; }
 
   /* 浮动按钮 */
   .float-btn-container { position: absolute; bottom: 32px; right: 32px; z-index: 50; }

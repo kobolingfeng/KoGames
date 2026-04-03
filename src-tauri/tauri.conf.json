@@ -4,14 +4,18 @@
   "identifier": "com.kogames",
   "version": "0.1.0",
   "build": {
-    "beforeDevCommand": "npm run dev",
+    "beforeDevCommand": "npm run vite:dev",
     "devUrl": "http://localhost:1421",
-    "beforeBuildCommand": "npm run build",
+    "beforeBuildCommand": "npm run vite:build",
     "frontendDist": "../dist"
   },
   "app": {
     "security": {
-      "csp": "default-src 'self'; img-src 'self' asset: https://steamcdn-a.akamaihd.net https://cdn.cloudflare.steamstatic.com https://store.steampowered.com https://cdn.akamai.steamstatic.com https://www.steamgriddb.com https://cdn2.steamgriddb.com; connect-src 'self' https://steamcdn-a.akamaihd.net https://cdn.cloudflare.steamstatic.com https://store.steampowered.com https://www.steamgriddb.com https://api.igdb.com https://howlongtobeat.com https://www.pcgamingwiki.com; style-src 'self' 'unsafe-inline'; media-src 'self' asset: https://steamcdn-a.akamaihd.net https://cdn.cloudflare.steamstatic.com"
+      "csp": "default-src 'self'; img-src 'self' asset: http://asset.localhost https://asset.localhost https://steamcdn-a.akamaihd.net https://cdn.cloudflare.steamstatic.com https://store.steampowered.com https://cdn.akamai.steamstatic.com https://www.steamgriddb.com https://cdn2.steamgriddb.com; connect-src 'self' https://steamcdn-a.akamaihd.net https://cdn.cloudflare.steamstatic.com https://store.steampowered.com https://www.steamgriddb.com https://api.igdb.com https://howlongtobeat.com https://www.pcgamingwiki.com; style-src 'self' 'unsafe-inline'; media-src 'self' asset: http://asset.localhost https://asset.localhost https://steamcdn-a.akamaihd.net https://cdn.cloudflare.steamstatic.com",
+      "assetProtocol": {
+        "enable": true,
+        "scope": ["**"]
+      }
     },
     "windows": [
       {
@@ -29,7 +33,5 @@
       }
     ]
   },
-  "plugins": {
-    "dialog": {}
-  }
+  "plugins": {}
 }

@@ -6,5 +6,5 @@ echo ========================================
 echo.
 echo Starting hot-reload dev server...
 echo.
-npm run tauri:dev
+npm run dev
 pause
