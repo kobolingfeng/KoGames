@@ -61,6 +61,16 @@
     const newLang = currentLang === 'zh' ? 'en' : 'zh';
     setLocale(newLang);
     currentLang = newLang;
+    saveSettings();
+  }
+
+  function saveSettings() {
+    invoke('save_user_settings', { settings: {
+      soundEnabled,
+      screenSaverEnabled,
+      showHidden,
+      lang: currentLang,
+    }}).catch(() => {});
   }
 
   // 游戏详情
@@ -724,6 +734,14 @@
   }
 
   onMount(() => {
+    // 加载持久化设置
+    invoke<Record<string, unknown>>('load_user_settings').then((s: Record<string, unknown>) => {
+      if (typeof s.soundEnabled === 'boolean') soundEnabled = s.soundEnabled;
+      if (typeof s.screenSaverEnabled === 'boolean') screenSaverEnabled = s.screenSaverEnabled;
+      if (typeof s.showHidden === 'boolean') showHidden = s.showHidden;
+      if (s.lang === 'zh' || s.lang === 'en') { setLocale(s.lang as string); currentLang = s.lang as string; }
+    }).catch(() => {});
+
     const loadTimeout = setTimeout(() => { pendingTimeouts.delete(loadTimeout); isLoaded = true; }, 100);
     pendingTimeouts.add(loadTimeout);
 
@@ -2083,7 +2101,7 @@
 
     <div class="cc-grid">
       <!-- 音效开关 -->
-      <button class="cc-card" class:cc-active={soundEnabled} onclick={() => { soundEnabled = !soundEnabled; playSound('confirm'); }}>
+      <button class="cc-card" class:cc-active={soundEnabled} onclick={() => { soundEnabled = !soundEnabled; playSound('confirm'); saveSettings(); }}>
         <div class="cc-icon">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             {#if soundEnabled}
@@ -2101,7 +2119,7 @@
       </button>
 
       <!-- 屏保开关 -->
-      <button class="cc-card" class:cc-active={screenSaverEnabled} onclick={() => { screenSaverEnabled = !screenSaverEnabled; resetIdleTimer(); }}>
+      <button class="cc-card" class:cc-active={screenSaverEnabled} onclick={() => { screenSaverEnabled = !screenSaverEnabled; resetIdleTimer(); saveSettings(); }}>
         <div class="cc-icon">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"/>
@@ -2125,7 +2143,7 @@
       </button>
 
       <!-- 显示隐藏游戏 -->
-      <button class="cc-card" class:cc-active={showHidden} onclick={() => showHidden = !showHidden}>
+      <button class="cc-card" class:cc-active={showHidden} onclick={() => { showHidden = !showHidden; saveSettings(); }}>
         <div class="cc-icon">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             {#if showHidden}
