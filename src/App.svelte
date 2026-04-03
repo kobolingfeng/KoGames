@@ -2,10 +2,12 @@
   import { onMount } from 'svelte';
   import { invoke } from '@tauri-apps/api/core';
   import BigScreen from './components/BigScreen.svelte';
+  import DesktopMode from './components/DesktopMode.svelte';
   import { t } from './lib/i18n/index';
   import type { Game } from './lib/types';
 
   let games = $state<Game[]>([]);
+  let appMode = $state<'bigscreen' | 'desktop'>('bigscreen');
 
   async function loadGames() {
     try {
@@ -67,17 +69,33 @@
     }
   }
 
+  function switchMode() {
+    appMode = appMode === 'bigscreen' ? 'desktop' : 'bigscreen';
+  }
+
   onMount(() => {
     loadGames();
   });
 </script>
 
-<BigScreen
-  {games}
-  onExit={handleExit}
-  onLaunchGame={handleLaunchGame}
-  onAddGame={handleAddGame}
-  onTogglePin={handleTogglePin}
-  onGamesChanged={loadGames}
-  {t}
-/>
+{#if appMode === 'bigscreen'}
+  <BigScreen
+    {games}
+    onExit={handleExit}
+    onLaunchGame={handleLaunchGame}
+    onAddGame={handleAddGame}
+    onTogglePin={handleTogglePin}
+    onGamesChanged={loadGames}
+    onSwitchMode={switchMode}
+    {t}
+  />
+{:else}
+  <DesktopMode
+    {games}
+    onLaunchGame={handleLaunchGame}
+    onAddGame={handleAddGame}
+    onGamesChanged={loadGames}
+    onSwitchMode={switchMode}
+    {t}
+  />
+{/if}

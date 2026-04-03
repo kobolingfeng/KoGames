@@ -14,25 +14,29 @@ pub fn get_battery_status() -> BatteryStatus {
         let mut status = SYSTEM_POWER_STATUS::default();
         let ok = unsafe { GetSystemPowerStatus(&mut status) };
         if ok.is_ok() {
-            let percentage = if status.BatteryLifePercent <= 100 {
+            let battery_percent = if status.BatteryLifePercent <= 100 {
                 status.BatteryLifePercent as i32
             } else {
                 -1
             };
             let is_charging =
                 status.ACLineStatus == 1 || status.BatteryFlag & 8 != 0;
+            let is_ac_connected = status.ACLineStatus == 1;
             let has_battery = status.BatteryFlag != 128;
-            let remaining_seconds = if status.BatteryLifeTime != 0xFFFFFFFF {
-                status.BatteryLifeTime as i32
+            let battery_life_time = if status.BatteryLifeTime != 0xFFFFFFFF {
+                Some(status.BatteryLifeTime as i32)
             } else {
-                -1
+                None
             };
+            let power_status = if is_charging { "Charging" } else if has_battery { "Battery" } else { "AC" };
 
             return BatteryStatus {
                 has_battery,
                 is_charging,
-                percentage,
-                remaining_seconds,
+                is_ac_connected,
+                battery_percent,
+                battery_life_time,
+                power_status: power_status.to_string(),
             };
         }
     }
@@ -40,7 +44,9 @@ pub fn get_battery_status() -> BatteryStatus {
     BatteryStatus {
         has_battery: false,
         is_charging: false,
-        percentage: -1,
-        remaining_seconds: -1,
+        is_ac_connected: false,
+        battery_percent: -1,
+        battery_life_time: None,
+        power_status: "Unknown".to_string(),
     }
 }

@@ -70,24 +70,13 @@ pub fn scan_epic_games() -> Result<Vec<Game>, String> {
 
         let install_loc = manifest.install_location.clone();
 
-        games.push(Game {
-            id: format!("epic_{}", app_name),
-            name: display_name,
-            path: exe_path,
-            steam_app_id: None,
-            source: Some("epic".to_string()),
-            cover: None,
-            added_at: Some(std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_millis() as i64),
-            last_played_at: None,
-            install_location: install_loc,
-            pinned: None,
-            completion_status: None,
-            total_play_time: None,
-            description: None,
-            genre: None,
-            release_year: None,
-            favorite: None,
-        });
+        games.push(Game::new_import(
+            format!("epic_{}", app_name),
+            display_name,
+            "epic",
+            exe_path,
+            install_loc,
+        ));
     }
 
     Ok(games)

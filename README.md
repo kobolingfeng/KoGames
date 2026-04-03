@@ -14,15 +14,26 @@
 
 ### ✨ 功能特色
 
-- 🖥️ **大屏模式** — 全屏沉浸式 UI，支持手柄/键盘操控
-- 🎮 **多平台导入** — 自动识别 Steam / Epic / EA / Ubisoft / Xbox / GOG 游戏
-- 📊 **游戏统计** — 游戏时长、通关状态、平台分布一目了然
-- 🔍 **快速搜索** — 即时搜索所有游戏
+- 🖥️ **双模式 UI** — 全屏大屏模式 + 传统桌面模式，一键切换
+- 🎮 **7 大平台导入** — Steam / Epic / EA / Ubisoft / Xbox / GOG / Battle.net
+- 📊 **深度统计** — 游戏时长、通关状态、平台分布、年度回顾、成就里程碑
+- 🔍 **智能搜索** — 支持按名称、开发商、发行商、标签、类型搜索
 - 📌 **快捷启动** — 固定常玩游戏到首页
 - 🎬 **Steam 视频预览** — 自动获取 Steam 游戏视频和封面
+- 🖼️ **SteamGridDB 集成** — 非 Steam 游戏也能自动获取高质量封面
+- 🌐 **IGDB 元数据** — 自动获取开发商、发行商、评分、简介
+- 🏷️ **标签系统** — 自定义标签，按标签筛选和分组
 - 🔋 **电池状态** — 笔记本/掌机电量实时显示
 - 🌙 **待机屏保** — 2 分钟无操作自动进入时钟屏保
 - 🌐 **中英文切换** — 自动检测系统语言，支持手动切换
+- 💾 **备份/恢复** — ZIP 备份整个游戏库，支持自动备份
+- 🎲 **随机选游戏** — 不知道玩什么？一键随机
+- 📝 **游戏备注** — 为游戏添加个人笔记
+- ⌨️ **快捷键** — Ctrl+F 搜索、Ctrl+A 全选、F11 切换模式
+- 📁 **导入导出** — JSON 格式导入导出游戏库
+- 🎯 **Pre/Post 脚本** — 游戏启动前后自动执行脚本
+- 🏆 **成就系统** — 游玩里程碑自动解锁
+- 📅 **年度回顾** — 类似 Steam Replay 的年度统计
 
 ### 🚀 快速开始
 
@@ -87,15 +98,26 @@ build.bat
 
 ### ✨ Features
 
-- 🖥️ **Big Screen Mode** — Fullscreen immersive UI with gamepad/keyboard controls
-- 🎮 **Multi-Platform Import** — Auto-detect games from Steam / Epic / EA / Ubisoft / Xbox / GOG
-- 📊 **Game Statistics** — Play time, completion status, platform breakdown at a glance
-- 🔍 **Quick Search** — Instant search across all games
+- 🖥️ **Dual Mode UI** — Fullscreen Big Screen + Traditional Desktop mode, one-click switch
+- 🎮 **7 Platform Import** — Steam / Epic / EA / Ubisoft / Xbox / GOG / Battle.net
+- 📊 **Deep Statistics** — Play time, completion, platform breakdown, Year in Review, milestones
+- 🔍 **Smart Search** — Search by name, developer, publisher, tags, genre
 - 📌 **Quick Launch** — Pin favorite games to home screen
 - 🎬 **Steam Video Preview** — Auto-fetch Steam game videos and covers
+- 🖼️ **SteamGridDB Integration** — Auto-fetch covers for non-Steam games
+- 🌐 **IGDB Metadata** — Auto-fetch developer, publisher, ratings, descriptions
+- 🏷️ **Tag System** — Custom tags with tag-based filtering and grouping
 - 🔋 **Battery Status** — Real-time battery display for laptops/handhelds
 - 🌙 **Screen Saver** — Auto clock screensaver after 2 minutes of inactivity
 - 🌐 **Bilingual** — Auto-detect system language, supports English & Chinese
+- 💾 **Backup/Restore** — ZIP backup entire library, auto-backup support
+- 🎲 **Random Game Picker** — Can't decide? Pick randomly
+- 📝 **Game Notes** — Add personal notes to games
+- ⌨️ **Keyboard Shortcuts** — Ctrl+F search, Ctrl+A select all, F11 toggle mode
+- 📁 **Import/Export** — JSON format library import/export
+- 🎯 **Pre/Post Scripts** — Auto-run scripts before/after game launch
+- 🏆 **Achievement System** — Auto-unlock gaming milestones
+- 📅 **Year in Review** — Steam Replay-like annual statistics
 
 ### 🚀 Getting Started
 

@@ -65,13 +65,13 @@ foreach ($app in $apps) {
 }
 "#;
 
-    let output = Command::new("powershell.exe")
-        .args(["-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", ps_script]);
+    let mut cmd = Command::new("powershell.exe");
+    cmd.args(["-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", ps_script]);
 
     #[cfg(windows)]
-    let output = output.creation_flags(0x08000000);
+    cmd.creation_flags(0x08000000);
 
-    let output = output.output();
+    let output = cmd.output();
 
     if let Ok(output) = output {
         let stdout = String::from_utf8_lossy(&output.stdout);
@@ -123,24 +123,13 @@ pub fn scan_xbox_games() -> Result<Vec<Game>, String> {
         let app_id = info.app_id.as_deref().unwrap_or("App");
         let launch_uri = format!("shell:appsFolder\\{}!{}", info.package_family_name, app_id);
 
-        games.push(Game {
-            id: format!("xbox_{}", info.package_family_name.replace('.', "_").to_lowercase()),
-            name: info.name,
-            path: Some(launch_uri),
-            steam_app_id: None,
-            source: Some("xbox".to_string()),
-            cover: None,
-            added_at: Some(std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_millis() as i64),
-            last_played_at: None,
-            install_location: Some(info.install_location),
-            pinned: None,
-            completion_status: None,
-            total_play_time: None,
-            description: None,
-            genre: None,
-            release_year: None,
-            favorite: None,
-        });
+        games.push(Game::new_import(
+            format!("xbox_{}", info.package_family_name.replace('.', "_").to_lowercase()),
+            info.name,
+            "xbox",
+            Some(launch_uri),
+            Some(info.install_location),
+        ));
     }
 
     Ok(games)

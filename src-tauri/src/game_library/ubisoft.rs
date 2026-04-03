@@ -30,13 +30,13 @@ if (Test-Path $basePath) {
 }
 "#;
 
-    let output = Command::new("powershell.exe")
-        .args(["-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", ps_script]);
+    let mut cmd = Command::new("powershell.exe");
+    cmd.args(["-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", ps_script]);
 
     #[cfg(windows)]
-    let output = output.creation_flags(0x08000000);
+    cmd.creation_flags(0x08000000);
 
-    let output = output.output();
+    let output = cmd.output();
 
     if let Ok(output) = output {
         let stdout = String::from_utf8_lossy(&output.stdout);
@@ -90,47 +90,25 @@ pub fn scan_ubisoft_games() -> Result<Vec<Game>, String> {
     for (name, install_dir, exe_path) in get_ubisoft_games_from_registry() {
         if seen.contains(&name.to_lowercase()) { continue; }
         seen.insert(name.to_lowercase());
-        games.push(Game {
-            id: format!("ubisoft_{}", name.replace(' ', "_").to_lowercase()),
+        games.push(Game::new_import(
+            format!("ubisoft_{}", name.replace(' ', "_").to_lowercase()),
             name,
-            path: exe_path,
-            steam_app_id: None,
-            source: Some("ubisoft".to_string()),
-            cover: None,
-            added_at: Some(std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_millis() as i64),
-            last_played_at: None,
-            install_location: Some(install_dir),
-            pinned: None,
-            completion_status: None,
-            total_play_time: None,
-            description: None,
-            genre: None,
-            release_year: None,
-            favorite: None,
-        });
+            "ubisoft",
+            exe_path,
+            Some(install_dir),
+        ));
     }
 
     for (name, install_dir, exe_path) in scan_ubisoft_install_dirs() {
         if seen.contains(&name.to_lowercase()) { continue; }
         seen.insert(name.to_lowercase());
-        games.push(Game {
-            id: format!("ubisoft_{}", name.replace(' ', "_").to_lowercase()),
+        games.push(Game::new_import(
+            format!("ubisoft_{}", name.replace(' ', "_").to_lowercase()),
             name,
-            path: exe_path,
-            steam_app_id: None,
-            source: Some("ubisoft".to_string()),
-            cover: None,
-            added_at: Some(std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_millis() as i64),
-            last_played_at: None,
-            install_location: Some(install_dir),
-            pinned: None,
-            completion_status: None,
-            total_play_time: None,
-            description: None,
-            genre: None,
-            release_year: None,
-            favorite: None,
-        });
+            "ubisoft",
+            exe_path,
+            Some(install_dir),
+        ));
     }
 
     Ok(games)

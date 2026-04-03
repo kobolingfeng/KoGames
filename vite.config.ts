@@ -13,5 +13,13 @@ export default defineConfig({
   build: {
     target: 'esnext',
     minify: 'esbuild',
+    cssMinify: true,
+    reportCompressedSize: true,
+    chunkSizeWarningLimit: 200,
+    rollupOptions: {
+      output: {
+        manualChunks: undefined,
+      },
+    },
   },
 });

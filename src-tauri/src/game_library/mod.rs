@@ -1,5 +1,6 @@
 //! 多平台游戏库扫描模块
 
+pub mod battlenet;
 pub mod ea;
 pub mod epic;
 pub mod gog;
@@ -20,6 +21,7 @@ pub async fn import_platform_games(app: AppHandle, platform: String) -> Result<V
             "ubisoft" => ubisoft::scan_ubisoft_games(),
             "xbox" => xbox::scan_xbox_games(),
             "gog" => gog::scan_gog_games(),
+            "battlenet" => battlenet::scan_battlenet_games(),
             _ => Err(format!("Unsupported platform: {}", platform_clone)),
         }
     })
@@ -55,7 +57,7 @@ pub async fn import_all_platform_games(app: AppHandle) -> serde_json::Value {
     let mut results = serde_json::json!({});
     let mut total_imported = 0;
 
-    for platform in ["epic", "ea", "ubisoft", "xbox", "gog"] {
+    for platform in ["epic", "ea", "ubisoft", "xbox", "gog", "battlenet"] {
         match import_platform_games(app.clone(), platform.to_string()).await {
             Ok(games) => {
                 let count = games.len();
@@ -91,6 +93,9 @@ pub async fn detect_installed_platforms() -> Vec<serde_json::Value> {
         }
         if gog::is_gog_installed() {
             platforms.push(serde_json::json!({ "id": "gog", "name": "GOG Galaxy", "installed": true }));
+        }
+        if battlenet::is_battlenet_installed() {
+            platforms.push(serde_json::json!({ "id": "battlenet", "name": "Battle.net", "installed": true }));
         }
 
         platforms

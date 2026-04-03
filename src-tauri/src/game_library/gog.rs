@@ -38,13 +38,13 @@ foreach ($basePath in $basePaths) {
 }
 "#;
 
-    let output = Command::new("powershell.exe")
-        .args(["-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", ps_script]);
+    let mut cmd = Command::new("powershell.exe");
+    cmd.args(["-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", ps_script]);
 
     #[cfg(windows)]
-    let output = output.creation_flags(0x08000000);
+    cmd.creation_flags(0x08000000);
 
-    let output = output.output();
+    let output = cmd.output();
 
     if let Ok(output) = output {
         let stdout = String::from_utf8_lossy(&output.stdout);
@@ -116,47 +116,25 @@ pub fn scan_gog_games() -> Result<Vec<Game>, String> {
     for info in get_gog_games_from_registry() {
         if seen.contains(&info.game_id) { continue; }
         seen.insert(info.game_id.clone());
-        games.push(Game {
-            id: format!("gog_{}", info.game_id),
-            name: info.name,
-            path: info.exe_path,
-            steam_app_id: None,
-            source: Some("gog".to_string()),
-            cover: None,
-            added_at: Some(std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_millis() as i64),
-            last_played_at: None,
-            install_location: Some(info.install_path),
-            pinned: None,
-            completion_status: None,
-            total_play_time: None,
-            description: None,
-            genre: None,
-            release_year: None,
-            favorite: None,
-        });
+        games.push(Game::new_import(
+            format!("gog_{}", info.game_id),
+            info.name,
+            "gog",
+            info.exe_path,
+            Some(info.install_path),
+        ));
     }
 
     for info in scan_gog_install_dirs() {
         if seen.contains(&info.game_id) { continue; }
         seen.insert(info.game_id.clone());
-        games.push(Game {
-            id: format!("gog_{}", info.game_id),
-            name: info.name,
-            path: info.exe_path,
-            steam_app_id: None,
-            source: Some("gog".to_string()),
-            cover: None,
-            added_at: Some(std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_millis() as i64),
-            last_played_at: None,
-            install_location: Some(info.install_path),
-            pinned: None,
-            completion_status: None,
-            total_play_time: None,
-            description: None,
-            genre: None,
-            release_year: None,
-            favorite: None,
-        });
+        games.push(Game::new_import(
+            format!("gog_{}", info.game_id),
+            info.name,
+            "gog",
+            info.exe_path,
+            Some(info.install_path),
+        ));
     }
 
     Ok(games)

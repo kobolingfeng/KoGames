@@ -20,6 +20,7 @@
     onAddGame = () => {},
     onTogglePin = (_game: Game) => {},
     onGamesChanged = () => {},
+    onSwitchMode = () => {},
     t: _tProp = (key: string) => key,
   }: {
     games: Game[];
@@ -28,6 +29,7 @@
     onAddGame: () => void;
     onTogglePin: (game: Game) => void;
     onGamesChanged: () => void;
+    onSwitchMode: () => void;
     t: (key: string) => string;
   } = $props();
 
@@ -204,9 +206,31 @@
     })()
   );
 
+  let showHidden = $state(false);
+  let filterTag = $state('');
+
+  // 所有已有标签（用于筛选 UI）
+  const allTags = $derived((() => {
+    const tagSet = new Set<string>();
+    for (const g of games) {
+      for (const tag of g.tags ?? []) {
+        tagSet.add(tag);
+      }
+    }
+    return [...tagSet].sort();
+  })());
+
   // 资源库：排序+过滤
   const filteredGames = $derived((() => {
     let list = [...games];
+
+    if (!showHidden) {
+      list = list.filter(g => !g.hidden);
+    }
+
+    if (filterTag) {
+      list = list.filter(g => g.tags?.includes(filterTag));
+    }
 
     // 平台过滤
     if (filterPlatform !== 'all') {
@@ -239,10 +263,18 @@
     return list;
   })());
 
-  // 搜索
+  // 搜索（支持名称、开发商、发行商、标签）
   const searchResults = $derived(
     searchQuery.trim()
-      ? games.filter(g => g.name.toLowerCase().includes(searchQuery.toLowerCase()))
+      ? games.filter(g => {
+          const q = searchQuery.toLowerCase();
+          return g.name.toLowerCase().includes(q)
+            || (g.developers?.some(d => d.toLowerCase().includes(q)) ?? false)
+            || (g.publishers?.some(p => p.toLowerCase().includes(q)) ?? false)
+            || (g.tags?.some(t => t.toLowerCase().includes(q)) ?? false)
+            || (g.genre?.toLowerCase().includes(q) ?? false)
+            || (g.series?.toLowerCase().includes(q) ?? false);
+        })
       : []
   );
 
@@ -342,6 +374,15 @@
     savePaths = [];
     currentView = 'detail';
     fetchMetadataIfNeeded(game);
+    if (!game.installSize && game.installLocation) {
+      invoke<number | null>('detect_install_size', { gameId: game.id }).then(size => {
+        if (size && detailGame?.id === game.id) {
+          detailGame = { ...detailGame, installSize: size };
+          const idx = games.findIndex(g => g.id === game.id);
+          if (idx >= 0) games[idx] = { ...games[idx], installSize: size };
+        }
+      }).catch(() => {});
+    }
   }
 
   // 更新游戏属性并通知
@@ -373,19 +414,73 @@
   }
 
   async function fetchMetadataIfNeeded(game: Game) {
-    if (!game.steamAppId || game.description) return;
-    try {
-      const result = await invoke<{ description?: string; genre?: string; releaseYear?: number; updated: boolean }>(
-        'fetch_steam_metadata', { gameId: game.id, steamAppId: game.steamAppId }
-      );
-      if (result.updated) {
-        if (result.description) game.description = result.description;
-        if (result.genre) game.genre = result.genre;
-        if (result.releaseYear) game.releaseYear = result.releaseYear;
-        const idx = games.findIndex(g => g.id === game.id);
-        if (idx >= 0) games[idx] = { ...games[idx], ...game };
-      }
-    } catch (_) {}
+    if (game.description && game.developers?.length) return;
+
+    if (game.steamAppId) {
+      try {
+        const result = await invoke<Record<string, unknown>>(
+          'fetch_steam_metadata', { gameId: game.id, steamAppId: game.steamAppId }
+        );
+        if (result.updated) {
+          const idx = games.findIndex(g => g.id === game.id);
+          if (idx >= 0) {
+            const updates: Partial<Game> = {};
+            if (result.description) updates.description = result.description as string;
+            if (result.genre) updates.genre = result.genre as string;
+            if (result.releaseYear) updates.releaseYear = result.releaseYear as number;
+            if (result.releaseDate) updates.releaseDate = result.releaseDate as string;
+            if (result.developers) updates.developers = result.developers as string[];
+            if (result.publishers) updates.publishers = result.publishers as string[];
+            if (result.criticScore) updates.criticScore = result.criticScore as number;
+            if (result.backgroundImage) updates.backgroundImage = result.backgroundImage as string;
+            games[idx] = { ...games[idx], ...updates };
+            if (detailGame?.id === game.id) detailGame = games[idx];
+          }
+        }
+      } catch (_) {}
+    } else {
+      try {
+        const result = await invoke<Record<string, unknown>>(
+          'fetch_igdb_metadata', { gameId: game.id, gameName: game.name }
+        );
+        if (result.found && result.updated) {
+          const idx = games.findIndex(g => g.id === game.id);
+          if (idx >= 0) {
+            const updates: Partial<Game> = {};
+            if (result.description) updates.description = result.description as string;
+            if (result.genre) updates.genre = result.genre as string;
+            if (result.releaseYear) updates.releaseYear = result.releaseYear as number;
+            if (result.releaseDate) updates.releaseDate = result.releaseDate as string;
+            if (result.developers) updates.developers = result.developers as string[];
+            if (result.publishers) updates.publishers = result.publishers as string[];
+            if (result.criticScore) updates.criticScore = result.criticScore as number;
+            if (result.communityScore) updates.communityScore = result.communityScore as number;
+            games[idx] = { ...games[idx], ...updates };
+            if (detailGame?.id === game.id) detailGame = games[idx];
+          }
+        }
+      } catch (_) {}
+    }
+
+    if (!game.cover) {
+      try {
+        if (game.steamAppId) {
+          const cover = await invoke<string | null>('download_game_cover', { gameId: game.id });
+          if (cover) {
+            const idx = games.findIndex(g => g.id === game.id);
+            if (idx >= 0) { games[idx] = { ...games[idx], cover }; }
+            if (detailGame?.id === game.id) detailGame = { ...detailGame, cover };
+          }
+        } else {
+          const cover = await invoke<string | null>('search_cover_online', { gameId: game.id, gameName: game.name });
+          if (cover) {
+            const idx = games.findIndex(g => g.id === game.id);
+            if (idx >= 0) { games[idx] = { ...games[idx], cover }; }
+            if (detailGame?.id === game.id) detailGame = { ...detailGame, cover };
+          }
+        }
+      } catch (_) {}
+    }
   }
 
   async function toggleProperties() {
@@ -639,14 +734,21 @@
     timeInterval = setInterval(updateTime, 1000);
 
     const fetchBattery = () => {
-      invoke<{ has_battery: boolean; is_charging: boolean; percentage: number; remaining_seconds: number }>('get_battery_status').then(status => {
-        batteryPercent = status.percentage >= 0 ? status.percentage : 100;
+      invoke<{ has_battery: boolean; is_charging: boolean; is_ac_connected: boolean; battery_percent: number; battery_life_time: number | null; power_status: string }>('get_battery_status').then(status => {
+        batteryPercent = status.battery_percent >= 0 ? status.battery_percent : 100;
         isCharging = status.is_charging;
         isAC = !status.has_battery;
       }).catch(() => {});
     };
     fetchBattery();
     batteryInterval = setInterval(fetchBattery, 30000);
+
+    invoke<{ total: number }>('auto_import_all').then(result => {
+      if (result.total > 0) {
+        onGamesChanged();
+        showBsToast(t('bs_imported_count').replace('{count}', String(result.total)));
+      }
+    }).catch(() => {});
 
     window.addEventListener('keydown', handleKeyDown);
     window.addEventListener('keyup', handleKeyUp);
@@ -851,6 +953,78 @@
     } finally {
       isImporting = false;
     }
+  }
+
+  // 随机游戏选择
+  async function pickRandomGame() {
+    try {
+      const game = await invoke<Game | null>('pick_random_game', {
+        filterPlatform: filterPlatform !== 'all' ? filterPlatform : null,
+        filterStatus: filterStatus !== 'all' ? filterStatus : null,
+        excludeHidden: true,
+      });
+      if (game) {
+        detailGame = game;
+        currentView = 'detail';
+        playSound('confirm');
+        showBsToast(`🎲 ${game.name}`);
+      } else {
+        showBsToast(t('bs_no_games_found') || 'No games found');
+        playSound('error');
+      }
+    } catch (e) {
+      console.error('Random pick failed:', e);
+    }
+  }
+
+  // 备份库
+  async function handleBackup() {
+    try {
+      const path = await invoke<string>('backup_library');
+      showBsToast((t('bs_backup_success') || 'Backup saved') + ': ' + path.split(/[/\\]/).pop());
+      playSound('confirm');
+    } catch (e) {
+      console.error('Backup failed:', e);
+      showBsToast(t('bs_backup_failed') || 'Backup failed');
+      playSound('error');
+    }
+  }
+
+  // 批量获取元数据
+  let isFetchingMetadata = $state(false);
+  async function handleBatchMetadata() {
+    if (isFetchingMetadata) return;
+    isFetchingMetadata = true;
+    try {
+      const result = await invoke<{ metadataUpdated: number; coversDownloaded: number }>('batch_fetch_metadata');
+      showBsToast(`Metadata: ${result.metadataUpdated}, Covers: ${result.coversDownloaded}`);
+      playSound('confirm');
+      onGamesChanged();
+    } catch (e) {
+      console.error('Batch metadata failed:', e);
+      playSound('error');
+    } finally {
+      isFetchingMetadata = false;
+    }
+  }
+
+  // 导出库
+  async function handleExport() {
+    try {
+      const path = await invoke<string>('export_library');
+      showBsToast((t('bs_export_success') || 'Export saved') + ': ' + path.split(/[/\\]/).pop());
+      playSound('confirm');
+    } catch (e) {
+      console.error('Export failed:', e);
+      playSound('error');
+    }
+  }
+
+  // 隐藏/显示游戏
+  async function toggleHideGame(game: Game) {
+    const newHidden = !game.hidden;
+    await updateGame(game, { hidden: newHidden });
+    showBsToast(newHidden ? (t('bs_game_hidden') || 'Game hidden') : (t('bs_game_shown') || 'Game shown'));
   }
 
   // 限制焦点
@@ -1152,6 +1326,19 @@
             {/each}
           </div>
         </div>
+        {#if allTags.length > 0}
+        <div class="filter-section">
+          <div class="filter-pills">
+            <button class="filter-pill" class:active={filterTag === ''} onclick={() => filterTag = ''}>{t('bs_filter_all')}</button>
+            {#each allTags.slice(0, 10) as tag}
+              <button class="filter-pill" class:active={filterTag === tag} onclick={() => filterTag = filterTag === tag ? '' : tag}
+                style="--status-color: #6366f1">
+                {tag}
+              </button>
+            {/each}
+          </div>
+        </div>
+        {/if}
       </div>
 
       <div class="library-grid" bind:this={libraryGridRef}>
@@ -1220,7 +1407,9 @@
     <div class="detail-view">
       <!-- 背景 -->
       <div class="detail-bg">
-        {#if detailGame.steamAppId && videoCache[detailGame.steamAppId]?.heroUrl}
+        {#if detailGame.backgroundImage}
+          <img src={detailGame.backgroundImage} alt="" class="detail-bg-img" />
+        {:else if detailGame.steamAppId && videoCache[detailGame.steamAppId]?.heroUrl}
           <img src={videoCache[detailGame.steamAppId].heroUrl} alt="" class="detail-bg-img" />
         {:else if getCoverUrl(detailGame.cover)}
           <img src={getCoverUrl(detailGame.cover)} alt="" class="detail-bg-img cover-bg" />
@@ -1296,7 +1485,62 @@
                     <span class="stat-value">{getPlatformLabel(detailGame.source)}</span>
                   </div>
                 {/if}
+                {#if detailGame.playCount}
+                  <div class="detail-stat">
+                    <span class="stat-label">{t('bs_play_count')}</span>
+                    <span class="stat-value">{detailGame.playCount}{t('bs_total_sessions')}</span>
+                  </div>
+                {/if}
+                {#if detailGame.installSize}
+                  <div class="detail-stat">
+                    <span class="stat-label">{t('bs_install_size')}</span>
+                    <span class="stat-value">{(detailGame.installSize / 1073741824).toFixed(1)} GB</span>
+                  </div>
+                {/if}
               </div>
+
+              {#if detailGame.developers?.length || detailGame.publishers?.length || detailGame.criticScore || detailGame.releaseDate}
+              <div class="detail-stats-row" style="margin-top: 0.8rem;">
+                {#if detailGame.developers?.length}
+                  <div class="detail-stat">
+                    <span class="stat-label">{t('bs_developers')}</span>
+                    <span class="stat-value">{detailGame.developers.join(', ')}</span>
+                  </div>
+                {/if}
+                {#if detailGame.publishers?.length}
+                  <div class="detail-stat">
+                    <span class="stat-label">{t('bs_publishers')}</span>
+                    <span class="stat-value">{detailGame.publishers.join(', ')}</span>
+                  </div>
+                {/if}
+                {#if detailGame.criticScore}
+                  <div class="detail-stat">
+                    <span class="stat-label">{t('bs_critic_score')}</span>
+                    <span class="stat-value" style="color: {detailGame.criticScore >= 75 ? '#4ade80' : detailGame.criticScore >= 50 ? '#facc15' : '#f87171'}">{detailGame.criticScore}</span>
+                  </div>
+                {/if}
+                {#if detailGame.releaseDate}
+                  <div class="detail-stat">
+                    <span class="stat-label">{t('bs_release_date')}</span>
+                    <span class="stat-value">{detailGame.releaseDate}</span>
+                  </div>
+                {/if}
+              </div>
+              {/if}
+
+              {#if detailGame.tags?.length}
+              <div style="margin-top: 0.8rem; display: flex; flex-wrap: wrap; gap: 0.4rem;">
+                {#each detailGame.tags as tag}
+                  <span style="background: rgba(255,255,255,0.1); padding: 0.2rem 0.6rem; border-radius: 1rem; font-size: 0.8rem; color: rgba(255,255,255,0.7);">{tag}</span>
+                {/each}
+              </div>
+              {/if}
+
+              {#if detailGame.series}
+              <div style="margin-top: 0.5rem; font-size: 0.85rem; color: rgba(255,255,255,0.5);">
+                {t('bs_series')}: {detailGame.series}
+              </div>
+              {/if}
             </div>
           </div>
 
@@ -1345,7 +1589,20 @@
               </svg>
               {t('bs_properties')}
             </button>
-            <button class="action-btn danger" class:focused={detailFocusIndex === 6}
+            <button class="action-btn" class:focused={detailFocusIndex === 6}
+              onclick={() => toggleHideGame(detailGame!)}>
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                {#if detailGame.hidden}
+                  <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/>
+                  <circle cx="12" cy="12" r="3"/>
+                {:else}
+                  <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94"/>
+                  <line x1="1" y1="1" x2="23" y2="23"/>
+                {/if}
+              </svg>
+              {detailGame.hidden ? t('bs_show_game') : t('bs_hide_game')}
+            </button>
+            <button class="action-btn danger" class:focused={detailFocusIndex === 7}
               onclick={() => showDeleteConfirm = true}>
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                 <polyline points="3 6 5 6 21 6"/>
@@ -1427,6 +1684,48 @@
                   {/each}
                 </div>
               {/if}
+
+              <div class="prop-section">
+                <h4 class="prop-title">{t('bs_tags')}</h4>
+                <div style="display: flex; flex-wrap: wrap; gap: 0.4rem; margin-bottom: 0.5rem;">
+                  {#each (detailGame.tags ?? []) as tag, i}
+                    <span style="background: rgba(99,102,241,0.3); padding: 0.2rem 0.5rem; border-radius: 1rem; font-size: 0.8rem; display: flex; align-items: center; gap: 0.3rem;">
+                      {tag}
+                      <button style="background: none; border: none; color: rgba(255,255,255,0.5); cursor: pointer; padding: 0; font-size: 0.9rem;" onclick={() => {
+                        const newTags = [...(detailGame!.tags ?? [])];
+                        newTags.splice(i, 1);
+                        updateGame(detailGame!, { tags: newTags });
+                        detailGame!.tags = newTags;
+                      }}>×</button>
+                    </span>
+                  {/each}
+                </div>
+                <div style="display: flex; gap: 0.3rem;">
+                  <input type="text" placeholder={t('bs_tags') + '...'} style="flex: 1; background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.2); border-radius: 0.5rem; padding: 0.3rem 0.6rem; color: white; font-size: 0.8rem; outline: none;" onkeydown={(e: KeyboardEvent) => {
+                    if (e.key === 'Enter') {
+                      const input = e.currentTarget as HTMLInputElement;
+                      const val = input.value.trim();
+                      if (val && detailGame) {
+                        const newTags = [...(detailGame.tags ?? []), val];
+                        updateGame(detailGame, { tags: newTags });
+                        detailGame.tags = newTags;
+                        input.value = '';
+                      }
+                    }
+                  }} />
+                </div>
+              </div>
+
+              <div class="prop-section">
+                <h4 class="prop-title">{t('bs_notes')}</h4>
+                <textarea style="width: 100%; min-height: 60px; background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.2); border-radius: 0.5rem; padding: 0.5rem; color: white; font-size: 0.8rem; outline: none; resize: vertical;" value={detailGame.notes ?? ''} onblur={(e: FocusEvent) => {
+                  const val = (e.currentTarget as HTMLTextAreaElement).value;
+                  if (val !== (detailGame?.notes ?? '')) {
+                    updateGame(detailGame!, { notes: val });
+                    detailGame!.notes = val;
+                  }
+                }}></textarea>
+              </div>
 
               {#if detailGame.steamAppId}
                 <div class="prop-section">
@@ -1642,6 +1941,110 @@
           </button>
         </div>
 
+        <!-- 数据管理 -->
+        <div class="settings-group">
+          <h3 class="group-title">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+              <polyline points="7 10 12 15 17 10"/>
+              <line x1="12" y1="15" x2="12" y2="3"/>
+            </svg>
+            {t('bs_data_management')}
+          </h3>
+
+          <button class="settings-item" onclick={pickRandomGame}>
+            <div class="settings-icon">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <rect x="1" y="1" width="22" height="22" rx="4"/>
+                <circle cx="8" cy="8" r="1.5" fill="currentColor"/>
+                <circle cx="16" cy="8" r="1.5" fill="currentColor"/>
+                <circle cx="12" cy="12" r="1.5" fill="currentColor"/>
+                <circle cx="8" cy="16" r="1.5" fill="currentColor"/>
+                <circle cx="16" cy="16" r="1.5" fill="currentColor"/>
+              </svg>
+            </div>
+            <div class="settings-text">
+              <h3>{t('bs_random_game')}</h3>
+              <p>🎲</p>
+            </div>
+            <svg class="settings-arrow" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M9 18l6-6-6-6"/>
+            </svg>
+          </button>
+
+          <button class="settings-item" onclick={handleBackup}>
+            <div class="settings-icon">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/>
+                <polyline points="17 21 17 13 7 13 7 21"/>
+                <polyline points="7 3 7 8 15 8"/>
+              </svg>
+            </div>
+            <div class="settings-text">
+              <h3>{t('bs_backup')}</h3>
+              <p>ZIP</p>
+            </div>
+            <svg class="settings-arrow" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M9 18l6-6-6-6"/>
+            </svg>
+          </button>
+
+          <button class="settings-item" onclick={handleBatchMetadata} disabled={isFetchingMetadata}>
+            <div class="settings-icon">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                <polyline points="7 10 12 15 17 10"/>
+                <line x1="12" y1="15" x2="12" y2="3"/>
+              </svg>
+            </div>
+            <div class="settings-text">
+              <h3>{isFetchingMetadata ? '...' : (t('bs_auto_import') || 'Batch Metadata')}</h3>
+              <p>{t('bs_auto_import_desc') || 'Download metadata & covers for all games'}</p>
+            </div>
+            <svg class="settings-arrow" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M9 18l6-6-6-6"/>
+            </svg>
+          </button>
+
+          <button class="settings-item" onclick={handleExport}>
+            <div class="settings-icon">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                <polyline points="17 8 12 3 7 8"/>
+                <line x1="12" y1="3" x2="12" y2="15"/>
+              </svg>
+            </div>
+            <div class="settings-text">
+              <h3>{t('bs_export_library')}</h3>
+              <p>JSON</p>
+            </div>
+            <svg class="settings-arrow" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M9 18l6-6-6-6"/>
+            </svg>
+          </button>
+
+          <button class="settings-item" onclick={() => showHidden = !showHidden}>
+            <div class="settings-icon">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                {#if showHidden}
+                  <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/>
+                  <circle cx="12" cy="12" r="3"/>
+                {:else}
+                  <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94"/>
+                  <line x1="1" y1="1" x2="23" y2="23"/>
+                {/if}
+              </svg>
+            </div>
+            <div class="settings-text">
+              <h3>{t('bs_show_hidden')}</h3>
+              <p>{showHidden ? 'ON' : 'OFF'}</p>
+            </div>
+            <svg class="settings-arrow" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M9 18l6-6-6-6"/>
+            </svg>
+          </button>
+        </div>
+
         <!-- 关于 & 赞助 -->
         <div class="settings-group">
           <h3 class="group-title">
@@ -1705,8 +2108,24 @@
           {/if}
         </div>
 
-        <!-- 退出 -->
+        <!-- 模式切换 & 退出 -->
         <div class="settings-group">
+          <button class="settings-item" onclick={onSwitchMode}>
+            <div class="settings-icon">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <rect x="2" y="3" width="20" height="14" rx="2" ry="2"/>
+                <line x1="8" y1="21" x2="16" y2="21"/>
+                <line x1="12" y1="17" x2="12" y2="21"/>
+              </svg>
+            </div>
+            <div class="settings-text">
+              <h3>{t('bs_desktop_mode') || 'Desktop Mode'}</h3>
+              <p>{t('bs_desktop_mode_desc') || 'Switch to compact desktop layout'}</p>
+            </div>
+            <svg class="settings-arrow" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M9 18l6-6-6-6"/>
+            </svg>
+          </button>
           <button class="settings-item exit-btn" onclick={onExit}>
             <div class="settings-icon">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
