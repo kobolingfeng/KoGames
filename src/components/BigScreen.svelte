@@ -158,6 +158,13 @@
     } catch {}
   }
 
+  function handleClickSound(e: MouseEvent) {
+    const el = e.target as HTMLElement;
+    if (el?.closest('button, [role="button"], .cc-card, .nav-tab, .nav-pill-btn, .filter-pill, .settings-item, .settings-nav-item, .library-item, .bigscreen-game-card')) {
+      playSound('confirm');
+    }
+  }
+
   function resetIdleTimer() {
     if (screenSaverActive) {
       screenSaverActive = false;
@@ -776,6 +783,9 @@
     window.addEventListener('mousemove', resetIdleTimer);
     window.addEventListener('mousedown', resetIdleTimer);
 
+    // 鼠标点击音效
+    window.addEventListener('click', handleClickSound);
+
     // 启动待机计时器
     resetIdleTimer();
 
@@ -803,6 +813,7 @@
     window.removeEventListener('keyup', handleKeyUp);
     window.removeEventListener('mousemove', resetIdleTimer);
     window.removeEventListener('mousedown', resetIdleTimer);
+    window.removeEventListener('click', handleClickSound);
   });
 
   function handleKeyDown(e: KeyboardEvent) {
@@ -814,8 +825,8 @@
     // 键盘音效（仅非合成事件触发, 合成事件由gpAction处理）
     if (e.isTrusted) {
       if (e.key.startsWith('Arrow')) playSound('move');
-      else if (e.key === 'Enter' || e.key === ' ') playSound('confirm');
       else if (e.key === 'Escape') playSound('back');
+      // Enter/Space 的确认音由全局 click 事件处理，避免重复
     }
 
     // ESC / B = 返回
