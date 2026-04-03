@@ -10,6 +10,7 @@ default = []
 
 [build-dependencies]
 tauri-build = { version = "2", features = [] }
+dotenvy = "0.15"
 
 [dependencies]
 tauri = { version = "2", features = ["protocol-asset", "tray-icon"] }
@@ -26,7 +27,6 @@ lazy_static = "1.4"
 chrono = "0.4"
 zip = "2"
 urlencoding = "2"
-dotenvy = "0.15"
 
 [target.'cfg(windows)'.dependencies]
 winreg = "0.52"

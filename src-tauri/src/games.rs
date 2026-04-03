@@ -1458,8 +1458,8 @@ pub async fn fetch_igdb_metadata(app: AppHandle, game_id: String, game_name: Str
 
     let resp = client
         .post(&search_url)
-        .header("Client-ID", &std::env::var("IGDB_CLIENT_ID").unwrap_or_default())
-        .header("Authorization", format!("Bearer {}", std::env::var("IGDB_TOKEN").unwrap_or_default()))
+        .header("Client-ID", env!("IGDB_CLIENT_ID"))
+        .header("Authorization", format!("Bearer {}", env!("IGDB_TOKEN")))
         .send()
         .await;
 
@@ -1583,7 +1583,7 @@ pub async fn search_cover_online(app: AppHandle, game_id: String, game_name: Str
     );
 
     if let Ok(resp) = client.get(&search_url)
-        .header("Authorization", format!("Bearer {}", std::env::var("STEAMGRIDDB_TOKEN").unwrap_or_default()))
+        .header("Authorization", format!("Bearer {}", env!("STEAMGRIDDB_TOKEN")))
         .send().await
     {
         if let Ok(json) = resp.json::<serde_json::Value>().await {
@@ -1594,7 +1594,7 @@ pub async fn search_cover_online(app: AppHandle, game_id: String, game_name: Str
                         sgdb_id
                     );
                     if let Ok(grids_resp) = client.get(&grids_url)
-                        .header("Authorization", format!("Bearer {}", std::env::var("STEAMGRIDDB_TOKEN").unwrap_or_default()))
+                        .header("Authorization", format!("Bearer {}", env!("STEAMGRIDDB_TOKEN")))
                         .send().await
                     {
                         if let Ok(grids_json) = grids_resp.json::<serde_json::Value>().await {

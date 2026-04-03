@@ -24,9 +24,6 @@ fn get_launch_args() -> Vec<String> {
 }
 
 fn main() {
-    // 加载 .env 环境变量（API令牌等）
-    dotenvy::dotenv().ok();
-
     let args: Vec<String> = std::env::args().collect();
 
     let auto_backup = args.contains(&"--backup".to_string());
