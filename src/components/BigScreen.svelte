@@ -48,6 +48,7 @@
   let soundEnabled = $state(true);
   let screenSaverEnabled = $state(true);
   let showSponsor = $state(false);
+  let homePreviewMode = $state<'hero' | 'video'>('hero');
   let currentLang = $state(getLocale());
   let settingsTab = $state<'stats' | 'preferences' | 'import' | 'data' | 'about' | 'system'>('stats');
 
@@ -70,6 +71,7 @@
       soundEnabled,
       screenSaverEnabled,
       showHidden,
+      homePreviewMode,
       lang: currentLang,
     }}).catch(() => {});
   }
@@ -306,7 +308,9 @@
   let videoCache: Record<string, { videoUrl?: string; hlsUrl?: string; heroUrl?: string }> = $state({});
   let videoFetchGen = 0;
   let detailVideoEl: HTMLVideoElement | undefined = $state(undefined);
+  let homeVideoEl: HTMLVideoElement | undefined = $state(undefined);
   let hlsInstance: Hls | null = null;
+  let homeHlsInstance: Hls | null = null;
 
   let ribbonRef: HTMLDivElement | undefined = $state(undefined);
 
@@ -435,8 +439,10 @@
   }
 
   // 初始化/清理 HLS 视频播放器
-  function setupDetailVideo(videoEl: HTMLVideoElement, steamAppId: string) {
-    cleanupHls();
+  function setupHlsVideo(videoEl: HTMLVideoElement, steamAppId: string, target: 'detail' | 'home') {
+    if (target === 'detail') cleanupHls('detail');
+    else cleanupHls('home');
+
     const cache = videoCache[steamAppId];
     if (!cache) return;
 
@@ -444,7 +450,7 @@
     const mp4Url = cache.videoUrl;
 
     if (hlsUrl && Hls.isSupported()) {
-      console.log('[VIDEO] Using HLS for', steamAppId, hlsUrl);
+      console.log(`[VIDEO] Using HLS (${target}) for`, steamAppId);
       const hls = new Hls({ startLevel: -1, maxBufferLength: 30 });
       hls.loadSource(hlsUrl);
       hls.attachMedia(videoEl);
@@ -453,25 +459,34 @@
       });
       hls.on(Hls.Events.ERROR, (_event: string, data: { fatal: boolean }) => {
         if (data.fatal && mp4Url) {
-          console.log('[VIDEO] HLS failed, falling back to MP4');
+          console.log(`[VIDEO] HLS failed (${target}), falling back to MP4`);
           hls.destroy();
-          hlsInstance = null;
+          if (target === 'detail') hlsInstance = null;
+          else homeHlsInstance = null;
           videoEl.src = mp4Url;
           videoEl.play().catch(() => {});
         }
       });
-      hlsInstance = hls;
+      if (target === 'detail') hlsInstance = hls;
+      else homeHlsInstance = hls;
     } else if (mp4Url) {
-      console.log('[VIDEO] Using MP4 for', steamAppId, mp4Url);
+      console.log(`[VIDEO] Using MP4 (${target}) for`, steamAppId);
       videoEl.src = mp4Url;
       videoEl.play().catch(() => {});
     }
   }
 
-  function cleanupHls() {
-    if (hlsInstance) {
-      hlsInstance.destroy();
-      hlsInstance = null;
+  // 保留兼容接口
+  function setupDetailVideo(videoEl: HTMLVideoElement, steamAppId: string) {
+    setupHlsVideo(videoEl, steamAppId, 'detail');
+  }
+
+  function cleanupHls(target?: 'detail' | 'home') {
+    if (!target || target === 'detail') {
+      if (hlsInstance) { hlsInstance.destroy(); hlsInstance = null; }
+    }
+    if (!target || target === 'home') {
+      if (homeHlsInstance) { homeHlsInstance.destroy(); homeHlsInstance = null; }
     }
   }
 
@@ -482,7 +497,18 @@
     if (el && appId && videoCache[appId]) {
       setupDetailVideo(el, appId);
     }
-    return () => cleanupHls();
+    return () => cleanupHls('detail');
+  });
+
+  // 主页视频背景
+  $effect(() => {
+    const el = homeVideoEl;
+    const game = displayGames[focusedIndex];
+    const appId = game?.steamAppId;
+    if (el && appId && homePreviewMode === 'video' && videoCache[appId]) {
+      setupHlsVideo(el, appId, 'home');
+    }
+    return () => cleanupHls('home');
   });
 
   // 通过 Rust 后端获取 Steam 视频 URL（绕过 CORS）
@@ -836,6 +862,7 @@
       if (typeof s.soundEnabled === 'boolean') soundEnabled = s.soundEnabled;
       if (typeof s.screenSaverEnabled === 'boolean') screenSaverEnabled = s.screenSaverEnabled;
       if (typeof s.showHidden === 'boolean') showHidden = s.showHidden;
+      if (s.homePreviewMode === 'hero' || s.homePreviewMode === 'video') homePreviewMode = s.homePreviewMode;
       if (s.lang === 'zh' || s.lang === 'en') { setLocale(s.lang as string); currentLang = s.lang as string; }
     }).catch(() => {});
 
@@ -1182,34 +1209,79 @@
   $effect(() => {
     const game = focusedGame;
     if (!game?.steamAppId) return;
-    if (videoCache[game.steamAppId]) return;
-    const gen = ++videoFetchGen;
     const appId = game.steamAppId;
-    invoke<{ success: boolean; videoUrl?: string; heroUrl?: string }>('get_steam_video_url', { steamAppId: appId })
-      .then(result => {
-        if (gen !== videoFetchGen) return;
-        if (result.success) {
-          videoCache[appId] = { videoUrl: result.videoUrl, heroUrl: result.heroUrl };
-          videoCache = { ...videoCache };
-        }
-      })
-      .catch((e) => console.error('[BigScreen] Video request failed:', e));
+    const cache = videoCache[appId];
+    // 如果已有缓存并且不需要视频（或已有视频），跳过
+    if (cache?.heroUrl && (homePreviewMode !== 'video' || cache.hlsUrl || cache.videoUrl)) return;
+    const gen = ++videoFetchGen;
+    // 如果用户选择视频模式，通过 fetch_steam_videos 获取视频 URL
+    if (homePreviewMode === 'video' && !cache?.hlsUrl && !cache?.videoUrl) {
+      invoke<{ videos: Array<{ hlsUrl?: string; mp4Max?: string; thumbnail?: string }> }>('fetch_steam_videos', { steamAppId: appId })
+        .then(result => {
+          if (gen !== videoFetchGen) return;
+          if (result.videos?.length) {
+            const v = result.videos[0];
+            videoCache[appId] = {
+              ...videoCache[appId],
+              hlsUrl: v.hlsUrl || undefined,
+              videoUrl: v.mp4Max || undefined,
+              heroUrl: v.thumbnail || videoCache[appId]?.heroUrl || undefined,
+            };
+            videoCache = { ...videoCache };
+          }
+        })
+        .catch(() => {});
+    }
+    // 同时获取 hero 图（如果没有）
+    if (!cache?.heroUrl) {
+      invoke<{ success: boolean; heroUrl?: string }>('get_steam_video_url', { steamAppId: appId })
+        .then(result => {
+          if (gen !== videoFetchGen) return;
+          if (result.success && result.heroUrl) {
+            videoCache[appId] = { ...videoCache[appId], heroUrl: result.heroUrl };
+            videoCache = { ...videoCache };
+          }
+        })
+        .catch(() => {});
+    }
   });
 
-  // 详情页也加载大图
+  // 详情页也加载大图和视频
   $effect(() => {
     const game = detailGame;
     if (!game?.steamAppId || currentView !== 'detail') return;
-    if (videoCache[game.steamAppId]) return;
     const appId = game.steamAppId;
-    invoke<{ success: boolean; heroUrl?: string }>('get_steam_video_url', { steamAppId: appId })
-      .then(result => {
-        if (result.success && result.heroUrl) {
-          videoCache[appId] = { heroUrl: result.heroUrl };
-          videoCache = { ...videoCache };
-        }
-      })
-      .catch(() => {});
+    const cache = videoCache[appId];
+    // 如果已有 hero 和视频数据，跳过
+    if (cache?.heroUrl && (cache.hlsUrl || cache.videoUrl)) return;
+    // 获取视频 URL（如果没有）
+    if (!cache?.hlsUrl && !cache?.videoUrl) {
+      invoke<{ videos: Array<{ hlsUrl?: string; mp4Max?: string; thumbnail?: string }> }>('fetch_steam_videos', { steamAppId: appId })
+        .then(result => {
+          if (result.videos?.length) {
+            const v = result.videos[0];
+            videoCache[appId] = {
+              ...videoCache[appId],
+              hlsUrl: v.hlsUrl || undefined,
+              videoUrl: v.mp4Max || undefined,
+              heroUrl: v.thumbnail || videoCache[appId]?.heroUrl || undefined,
+            };
+            videoCache = { ...videoCache };
+          }
+        })
+        .catch(() => {});
+    }
+    // 获取 hero 图（如果没有）
+    if (!cache?.heroUrl) {
+      invoke<{ success: boolean; heroUrl?: string }>('get_steam_video_url', { steamAppId: appId })
+        .then(result => {
+          if (result.success && result.heroUrl) {
+            videoCache[appId] = { ...videoCache[appId], heroUrl: result.heroUrl };
+            videoCache = { ...videoCache };
+          }
+        })
+        .catch(() => {});
+    }
   });
 </script>
 
@@ -1218,7 +1290,17 @@
   {#if currentView === 'home'}
     {#each displayGames as game, index}
       <div class="bg-layer" class:active={index === focusedIndex}>
-        {#if game.steamAppId && videoCache[game.steamAppId]?.heroUrl}
+        {#if homePreviewMode === 'video' && index === focusedIndex && game.steamAppId && (videoCache[game.steamAppId]?.hlsUrl || videoCache[game.steamAppId]?.videoUrl)}
+          <!-- svelte-ignore a11y_media_has_caption -->
+          <video
+            bind:this={homeVideoEl}
+            class="bg-image hero-image"
+            loop
+            muted
+            playsinline
+            style="object-fit: cover;"
+          ></video>
+        {:else if game.steamAppId && videoCache[game.steamAppId]?.heroUrl}
           <img src={videoCache[game.steamAppId].heroUrl} alt="" class="bg-image hero-image" />
         {:else if getCoverUrl(game.cover)}
           <img src={getCoverUrl(game.cover)} alt="" class="bg-image" />
@@ -2268,6 +2350,23 @@
         </div>
         <span class="cc-label">{t('bs_show_hidden')}</span>
         <span class="cc-status">{showHidden ? 'ON' : 'OFF'}</span>
+      </button>
+
+      <!-- 主页预览模式 -->
+      <button class="cc-card" class:cc-active={homePreviewMode === 'video'} onclick={() => { homePreviewMode = homePreviewMode === 'hero' ? 'video' : 'hero'; saveSettings(); }}>
+        <div class="cc-icon">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            {#if homePreviewMode === 'video'}
+              <polygon points="5,3 19,12 5,21" fill="currentColor" stroke="none"/>
+            {:else}
+              <rect x="2" y="4" width="20" height="16" rx="2"/>
+              <circle cx="8" cy="10" r="2"/>
+              <path d="M22 20L16 14 12 18 8 14 2 20"/>
+            {/if}
+          </svg>
+        </div>
+        <span class="cc-label">{homePreviewMode === 'video' ? t('bs_preview_video') : t('bs_preview_hero')}</span>
+        <span class="cc-status">{homePreviewMode === 'video' ? '🎬' : '🖼️'}</span>
       </button>
 
       <!-- 随机游戏 -->

@@ -114,6 +114,8 @@ const zh: Record<string, string> = {
   bs_hide_game: '隐藏游戏',
   bs_show_game: '取消隐藏',
   bs_show_hidden: '显示隐藏游戏',
+  bs_preview_video: '主页预览: 视频',
+  bs_preview_hero: '主页预览: 图片',
   bs_no_games_found: '没有找到游戏',
   bs_developers: '开发商',
   bs_publishers: '发行商',

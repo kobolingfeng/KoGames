@@ -114,6 +114,8 @@ const en: Record<string, string> = {
   bs_hide_game: 'Hide Game',
   bs_show_game: 'Unhide',
   bs_show_hidden: 'Show Hidden Games',
+  bs_preview_video: 'Home Preview: Video',
+  bs_preview_hero: 'Home Preview: Image',
   bs_no_games_found: 'No games found',
   bs_developers: 'Developers',
   bs_publishers: 'Publishers',
