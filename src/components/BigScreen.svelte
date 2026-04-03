@@ -306,7 +306,6 @@
 
   // 视频/大图缓存
   let videoCache: Record<string, { videoUrl?: string; hlsUrl?: string; heroUrl?: string }> = $state({});
-  let videoFetchGen = 0;
   let detailVideoEl: HTMLVideoElement | undefined = $state(undefined);
   let homeVideoEl: HTMLVideoElement | undefined = $state(undefined);
   let hlsInstance: Hls | null = null;
@@ -1205,83 +1204,81 @@
     focusedIndex < displayGames.length ? displayGames[focusedIndex] : null
   );
 
-  // 加载视频/大图
+  // 加载主页 hero 大图
   $effect(() => {
     const game = focusedGame;
     if (!game?.steamAppId) return;
     const appId = game.steamAppId;
-    const cache = videoCache[appId];
-    // 如果已有缓存并且不需要视频（或已有视频），跳过
-    if (cache?.heroUrl && (homePreviewMode !== 'video' || cache.hlsUrl || cache.videoUrl)) return;
-    const gen = ++videoFetchGen;
-    // 如果用户选择视频模式，通过 fetch_steam_videos 获取视频 URL
-    if (homePreviewMode === 'video' && !cache?.hlsUrl && !cache?.videoUrl) {
-      invoke<{ videos: Array<{ hlsUrl?: string; mp4Max?: string; thumbnail?: string }> }>('fetch_steam_videos', { steamAppId: appId })
-        .then(result => {
-          if (gen !== videoFetchGen) return;
-          if (result.videos?.length) {
-            const v = result.videos[0];
-            videoCache[appId] = {
-              ...videoCache[appId],
-              hlsUrl: v.hlsUrl || undefined,
-              videoUrl: v.mp4Max || undefined,
-              heroUrl: v.thumbnail || videoCache[appId]?.heroUrl || undefined,
-            };
-            videoCache = { ...videoCache };
-          }
-        })
-        .catch(() => {});
-    }
-    // 同时获取 hero 图（如果没有）
-    if (!cache?.heroUrl) {
-      invoke<{ success: boolean; heroUrl?: string }>('get_steam_video_url', { steamAppId: appId })
-        .then(result => {
-          if (gen !== videoFetchGen) return;
-          if (result.success && result.heroUrl) {
-            videoCache[appId] = { ...videoCache[appId], heroUrl: result.heroUrl };
-            videoCache = { ...videoCache };
-          }
-        })
-        .catch(() => {});
-    }
+    if (videoCache[appId]?.heroUrl) return;
+    invoke<{ success: boolean; heroUrl?: string }>('get_steam_video_url', { steamAppId: appId })
+      .then(result => {
+        if (result.success && result.heroUrl) {
+          videoCache[appId] = { ...videoCache[appId], heroUrl: result.heroUrl };
+          videoCache = { ...videoCache };
+        }
+      })
+      .catch(() => {});
   });
 
-  // 详情页也加载大图和视频
+  // 加载主页视频 URL（仅视频模式时）
+  $effect(() => {
+    if (homePreviewMode !== 'video') return;
+    const game = focusedGame;
+    if (!game?.steamAppId) return;
+    const appId = game.steamAppId;
+    if (videoCache[appId]?.hlsUrl || videoCache[appId]?.videoUrl) return;
+    invoke<{ videos: Array<{ hlsUrl?: string; mp4Max?: string; thumbnail?: string }> }>('fetch_steam_videos', { steamAppId: appId })
+      .then(result => {
+        if (result.videos?.length) {
+          const v = result.videos[0];
+          videoCache[appId] = {
+            ...videoCache[appId],
+            hlsUrl: v.hlsUrl || undefined,
+            videoUrl: v.mp4Max || undefined,
+            heroUrl: v.thumbnail || videoCache[appId]?.heroUrl || undefined,
+          };
+          videoCache = { ...videoCache };
+        }
+      })
+      .catch(() => {});
+  });
+
+  // 详情页加载 hero 大图
   $effect(() => {
     const game = detailGame;
     if (!game?.steamAppId || currentView !== 'detail') return;
     const appId = game.steamAppId;
-    const cache = videoCache[appId];
-    // 如果已有 hero 和视频数据，跳过
-    if (cache?.heroUrl && (cache.hlsUrl || cache.videoUrl)) return;
-    // 获取视频 URL（如果没有）
-    if (!cache?.hlsUrl && !cache?.videoUrl) {
-      invoke<{ videos: Array<{ hlsUrl?: string; mp4Max?: string; thumbnail?: string }> }>('fetch_steam_videos', { steamAppId: appId })
-        .then(result => {
-          if (result.videos?.length) {
-            const v = result.videos[0];
-            videoCache[appId] = {
-              ...videoCache[appId],
-              hlsUrl: v.hlsUrl || undefined,
-              videoUrl: v.mp4Max || undefined,
-              heroUrl: v.thumbnail || videoCache[appId]?.heroUrl || undefined,
-            };
-            videoCache = { ...videoCache };
-          }
-        })
-        .catch(() => {});
-    }
-    // 获取 hero 图（如果没有）
-    if (!cache?.heroUrl) {
-      invoke<{ success: boolean; heroUrl?: string }>('get_steam_video_url', { steamAppId: appId })
-        .then(result => {
-          if (result.success && result.heroUrl) {
-            videoCache[appId] = { ...videoCache[appId], heroUrl: result.heroUrl };
-            videoCache = { ...videoCache };
-          }
-        })
-        .catch(() => {});
-    }
+    if (videoCache[appId]?.heroUrl) return;
+    invoke<{ success: boolean; heroUrl?: string }>('get_steam_video_url', { steamAppId: appId })
+      .then(result => {
+        if (result.success && result.heroUrl) {
+          videoCache[appId] = { ...videoCache[appId], heroUrl: result.heroUrl };
+          videoCache = { ...videoCache };
+        }
+      })
+      .catch(() => {});
+  });
+
+  // 详情页加载视频 URL
+  $effect(() => {
+    const game = detailGame;
+    if (!game?.steamAppId || currentView !== 'detail') return;
+    const appId = game.steamAppId;
+    if (videoCache[appId]?.hlsUrl || videoCache[appId]?.videoUrl) return;
+    invoke<{ videos: Array<{ hlsUrl?: string; mp4Max?: string; thumbnail?: string }> }>('fetch_steam_videos', { steamAppId: appId })
+      .then(result => {
+        if (result.videos?.length) {
+          const v = result.videos[0];
+          videoCache[appId] = {
+            ...videoCache[appId],
+            hlsUrl: v.hlsUrl || undefined,
+            videoUrl: v.mp4Max || undefined,
+            heroUrl: v.thumbnail || videoCache[appId]?.heroUrl || undefined,
+          };
+          videoCache = { ...videoCache };
+        }
+      })
+      .catch(() => {});
   });
 </script>
 
