@@ -52,6 +52,45 @@
   let currentLang = $state(getLocale());
   let settingsTab = $state<'stats' | 'preferences' | 'import' | 'data' | 'about' | 'system'>('stats');
 
+  // 右键菜单
+  let ctxMenuOpen = $state(false);
+  let ctxMenuX = $state(0);
+  let ctxMenuY = $state(0);
+  let ctxMenuGame: Game | null = $state(null);
+  let ctxMenuFocusIdx = $state(0);
+
+  function openContextMenu(e: MouseEvent, game: Game) {
+    e.preventDefault();
+    e.stopPropagation();
+    ctxMenuGame = game;
+    ctxMenuFocusIdx = 0;
+    // 计算位置，避免菜单超出屏幕
+    const menuW = 240, menuH = 340;
+    ctxMenuX = Math.min(e.clientX, window.innerWidth - menuW - 8);
+    ctxMenuY = Math.min(e.clientY, window.innerHeight - menuH - 8);
+    ctxMenuOpen = true;
+  }
+
+  function closeContextMenu() {
+    ctxMenuOpen = false;
+    ctxMenuGame = null;
+  }
+
+  async function ctxAction(action: string) {
+    const game = ctxMenuGame;
+    if (!game) return;
+    closeContextMenu();
+    switch (action) {
+      case 'launch': handleLaunch(game); break;
+      case 'detail': openDetail(game); break;
+      case 'pin': onTogglePin(game); showBsToast(game.pinned ? t('bs_unpinned_from_home') : t('bs_pinned_to_home')); break;
+      case 'favorite': handleToggleFavorite(game); break;
+      case 'hide': toggleHideGame(game); break;
+      case 'cover': handleChangeCover(game); break;
+      case 'delete': openDetail(game); setTimeout(() => { showDeleteConfirm = true; }, 100); break;
+    }
+  }
+
   // Reactive t() that re-evaluates when currentLang changes
   const t = $derived.by(() => {
     // Reference currentLang so Svelte tracks it
@@ -165,6 +204,23 @@
     const el = e.target as HTMLElement;
     if (el?.closest('button, [role="button"], .cc-card, .nav-tab, .nav-pill-btn, .filter-pill, .settings-item, .settings-nav-item, .library-item, .bigscreen-game-card')) {
       playSound('confirm');
+    }
+  }
+
+  function handleGlobalContextMenu(e: Event) {
+    // 如果已经有自定义菜单的contextmenu事件处理，不在这里阻止
+    // 仅阻止默认浏览器右键菜单
+    if (!(e as MouseEvent).defaultPrevented) {
+      e.preventDefault();
+    }
+  }
+
+  function handleCtxMenuClose(e: MouseEvent) {
+    if (ctxMenuOpen) {
+      const target = e.target as HTMLElement;
+      if (!target?.closest('.ctx-menu')) {
+        closeContextMenu();
+      }
     }
   }
 
@@ -902,6 +958,11 @@
     // 鼠标点击音效
     window.addEventListener('click', handleClickSound);
 
+    // 禁用默认右键菜单
+    window.addEventListener('contextmenu', handleGlobalContextMenu);
+    // 点击任意位置关闭右键菜单
+    window.addEventListener('mousedown', handleCtxMenuClose);
+
     // 启动待机计时器
     resetIdleTimer();
 
@@ -930,6 +991,8 @@
     window.removeEventListener('mousemove', resetIdleTimer);
     window.removeEventListener('mousedown', resetIdleTimer);
     window.removeEventListener('click', handleClickSound);
+    window.removeEventListener('contextmenu', handleGlobalContextMenu);
+    window.removeEventListener('mousedown', handleCtxMenuClose);
     cleanupHls();
   });
 
@@ -950,6 +1013,7 @@
     if (e.key === 'Escape' || e.key === 'b' || e.key === 'B') {
       if ((e.key === 'b' || e.key === 'B') && (activeTag === 'INPUT' || activeTag === 'TEXTAREA')) return;
       e.preventDefault();
+      if (ctxMenuOpen) { closeContextMenu(); return; }
       if (showStatusPicker) { showStatusPicker = false; return; }
       if (showDeleteConfirm) { showDeleteConfirm = false; return; }
       if (controlCenterOpen) { controlCenterOpen = false; return; }
@@ -1379,6 +1443,7 @@
             class:focused={index === focusedIndex}
             onclick={() => { focusedIndex = index; }}
             ondblclick={() => handleLaunch(game)}
+            oncontextmenu={(e) => openContextMenu(e, game)}
           >
             <div class="card-image-wrapper">
               {#if getCoverUrl(game.cover)}
@@ -1551,6 +1616,7 @@
             role="button"
             tabindex="0"
             onclick={() => { libraryFocusIndex = index; openDetail(game); }}
+            oncontextmenu={(e) => openContextMenu(e, game)}
             onkeydown={() => {}}
           >
             <div class="library-cover">
@@ -2477,6 +2543,52 @@
     </div>
   {/if}
 
+  <!-- 右键菜单 -->
+  {#if ctxMenuOpen && ctxMenuGame}
+    <div class="ctx-menu" style="left: {ctxMenuX}px; top: {ctxMenuY}px;">
+      <div class="ctx-menu-header">
+        <span class="ctx-menu-title">{ctxMenuGame.name}</span>
+      </div>
+      <div class="ctx-menu-divider"></div>
+      <button class="ctx-menu-item" onclick={() => ctxAction('launch')}>
+        <svg viewBox="0 0 24 24" fill="currentColor"><polygon points="5,3 19,12 5,21"/></svg>
+        <span>{t('bs_play')}</span>
+      </button>
+      <button class="ctx-menu-item" onclick={() => ctxAction('detail')}>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
+        <span>{t('bs_game_detail')}</span>
+      </button>
+      <div class="ctx-menu-divider"></div>
+      <button class="ctx-menu-item" onclick={() => ctxAction('pin')}>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 17v5"/><path d="M9 2h6l-1 7h4l-5 6h-2l-5-6h4z"/></svg>
+        <span>{ctxMenuGame.pinned ? t('bs_unpin') : t('bs_pin')}</span>
+      </button>
+      <button class="ctx-menu-item" onclick={() => ctxAction('favorite')}>
+        <svg viewBox="0 0 24 24" fill={ctxMenuGame.favorite ? 'currentColor' : 'none'} stroke="currentColor" stroke-width="2"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 1 0-7.78 7.78L12 21.23l8.84-8.84a5.5 5.5 0 0 0 0-7.78z"/></svg>
+        <span>{ctxMenuGame.favorite ? t('bs_unfavorite') : t('bs_favorite')}</span>
+      </button>
+      <button class="ctx-menu-item" onclick={() => ctxAction('hide')}>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          {#if ctxMenuGame.hidden}
+            <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/>
+          {:else}
+            <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94"/><path d="M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19"/><line x1="1" y1="1" x2="23" y2="23"/>
+          {/if}
+        </svg>
+        <span>{ctxMenuGame.hidden ? t('bs_show_game') : t('bs_hide_game')}</span>
+      </button>
+      <button class="ctx-menu-item" onclick={() => ctxAction('cover')}>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
+        <span>{t('bs_change_cover')}</span>
+      </button>
+      <div class="ctx-menu-divider"></div>
+      <button class="ctx-menu-item ctx-menu-danger" onclick={() => ctxAction('delete')}>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+        <span>{t('bs_delete_game')}</span>
+      </button>
+    </div>
+  {/if}
+
   <!-- 待机屏保 -->
   {#if screenSaverActive}
     <div class="screensaver" onclick={resetIdleTimer} role="presentation">
@@ -3065,5 +3177,84 @@
   }
   .paypal-link:hover {
     background: rgba(0, 112, 186, 0.25);
+  }
+
+  /* 右键菜单 */
+  .ctx-menu {
+    position: fixed;
+    z-index: 10000;
+    min-width: 220px;
+    max-width: 280px;
+    background: rgba(18, 18, 28, 0.92);
+    backdrop-filter: blur(40px) saturate(1.4);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 16px;
+    padding: 6px;
+    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.6), 0 0 0 1px rgba(255, 255, 255, 0.05);
+    animation: ctx-menu-in 0.18s cubic-bezier(0.16, 1, 0.3, 1);
+  }
+  @keyframes ctx-menu-in {
+    from { opacity: 0; transform: scale(0.92) translateY(-4px); }
+    to { opacity: 1; transform: scale(1) translateY(0); }
+  }
+  .ctx-menu-header {
+    padding: 10px 14px 6px;
+  }
+  .ctx-menu-title {
+    font-size: 13px;
+    font-weight: 600;
+    color: rgba(255, 255, 255, 0.5);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    display: block;
+  }
+  .ctx-menu-divider {
+    height: 1px;
+    background: rgba(255, 255, 255, 0.08);
+    margin: 4px 8px;
+  }
+  .ctx-menu-item {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    width: 100%;
+    padding: 10px 14px;
+    background: none;
+    border: none;
+    border-radius: 10px;
+    color: rgba(255, 255, 255, 0.85);
+    font-size: 14px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: background 0.15s, color 0.15s;
+    text-align: left;
+  }
+  .ctx-menu-item:hover {
+    background: rgba(99, 102, 241, 0.2);
+    color: #fff;
+  }
+  .ctx-menu-item svg {
+    width: 18px;
+    height: 18px;
+    flex-shrink: 0;
+    opacity: 0.7;
+  }
+  .ctx-menu-item:hover svg {
+    opacity: 1;
+  }
+  .ctx-menu-danger {
+    color: rgba(239, 68, 68, 0.85);
+  }
+  .ctx-menu-danger:hover {
+    background: rgba(239, 68, 68, 0.15);
+    color: #ef4444;
+  }
+  .ctx-menu-danger svg {
+    color: rgba(239, 68, 68, 0.7);
+  }
+  .ctx-menu-danger:hover svg {
+    color: #ef4444;
+    opacity: 1;
   }
 </style>
