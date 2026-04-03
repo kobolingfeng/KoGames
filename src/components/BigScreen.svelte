@@ -2,6 +2,7 @@
   import { onMount, onDestroy } from 'svelte';
   import { invoke, convertFileSrc } from "@tauri-apps/api/core";
   import { listen } from "@tauri-apps/api/event";
+  import Hls from 'hls.js';
   import type { Game, CompletionStatus, SortMode, FilterPlatform, FilterStatus } from '../lib/types';
   import { setLocale, getLocale, t as _t } from '../lib/i18n/index';
 
@@ -302,8 +303,10 @@
   let isAC = $state(false);
 
   // 视频/大图缓存
-  let videoCache: Record<string, { videoUrl?: string; heroUrl?: string }> = $state({});
+  let videoCache: Record<string, { videoUrl?: string; hlsUrl?: string; heroUrl?: string }> = $state({});
   let videoFetchGen = 0;
+  let detailVideoEl: HTMLVideoElement | undefined = $state(undefined);
+  let hlsInstance: Hls | null = null;
 
   let ribbonRef: HTMLDivElement | undefined = $state(undefined);
 
@@ -431,14 +434,101 @@
     }
   }
 
+  // 初始化/清理 HLS 视频播放器
+  function setupDetailVideo(videoEl: HTMLVideoElement, steamAppId: string) {
+    cleanupHls();
+    const cache = videoCache[steamAppId];
+    if (!cache) return;
+
+    const hlsUrl = cache.hlsUrl;
+    const mp4Url = cache.videoUrl;
+
+    if (hlsUrl && Hls.isSupported()) {
+      console.log('[VIDEO] Using HLS for', steamAppId, hlsUrl);
+      const hls = new Hls({ startLevel: -1, maxBufferLength: 30 });
+      hls.loadSource(hlsUrl);
+      hls.attachMedia(videoEl);
+      hls.on(Hls.Events.MANIFEST_PARSED, () => {
+        videoEl.play().catch(() => {});
+      });
+      hls.on(Hls.Events.ERROR, (_event: string, data: { fatal: boolean }) => {
+        if (data.fatal && mp4Url) {
+          console.log('[VIDEO] HLS failed, falling back to MP4');
+          hls.destroy();
+          hlsInstance = null;
+          videoEl.src = mp4Url;
+          videoEl.play().catch(() => {});
+        }
+      });
+      hlsInstance = hls;
+    } else if (mp4Url) {
+      console.log('[VIDEO] Using MP4 for', steamAppId, mp4Url);
+      videoEl.src = mp4Url;
+      videoEl.play().catch(() => {});
+    }
+  }
+
+  function cleanupHls() {
+    if (hlsInstance) {
+      hlsInstance.destroy();
+      hlsInstance = null;
+    }
+  }
+
+  // 当 video 元素出现或 videoCache 更新时初始化播放器
+  $effect(() => {
+    const el = detailVideoEl;
+    const appId = detailGame?.steamAppId;
+    if (el && appId && videoCache[appId]) {
+      setupDetailVideo(el, appId);
+    }
+    return () => cleanupHls();
+  });
+
+  // 通过 Rust 后端获取 Steam 视频 URL（绕过 CORS）
+  async function fetchSteamVideoDirect(steamAppId: string) {
+    try {
+      const result = await invoke<{ videos: Array<{ hlsUrl?: string; mp4Max?: string; thumbnail?: string; name?: string }> }>('fetch_steam_videos', { steamAppId });
+      if (result.videos?.length) {
+        const v = result.videos[0];
+        console.log('[VIDEO] Got video from fetch_steam_videos:', v.hlsUrl, v.mp4Max);
+        videoCache[steamAppId] = {
+          hlsUrl: v.hlsUrl || undefined,
+          videoUrl: v.mp4Max || undefined,
+          heroUrl: v.thumbnail || undefined,
+        };
+      }
+    } catch (e) {
+      console.log('[VIDEO] fetch_steam_videos failed for', steamAppId, e);
+    }
+  }
+
   async function fetchMetadataIfNeeded(game: Game) {
-    if (game.description && game.developers?.length) return;
+    const hasMetadata = !!(game.description && game.developers?.length);
+    const hasVideo = !!(game.steamAppId && (videoCache[game.steamAppId]?.hlsUrl || videoCache[game.steamAppId]?.videoUrl));
+
+    // 如果元数据和视频都已有则跳过
+    if (hasMetadata && hasVideo) return;
 
     if (game.steamAppId) {
       try {
         const result = await invoke<Record<string, unknown>>(
           'fetch_steam_metadata', { gameId: game.id, steamAppId: game.steamAppId }
         );
+        // 提取视频信息到 videoCache (从返回结果或独立获取)
+        if (result.movies && Array.isArray(result.movies) && (result.movies as unknown[]).length > 0) {
+          const m = (result.movies as Record<string, string>[])[0];
+          console.log('[VIDEO] Got movie from backend:', m.hlsUrl, m.mp4Max);
+          videoCache[game.steamAppId] = {
+            hlsUrl: m.hlsUrl || undefined,
+            videoUrl: m.mp4Max || undefined,
+            heroUrl: m.thumbnail || undefined,
+          };
+        }
+        // 如果后端还没返回 movies，通过专用命令获取
+        if (!videoCache[game.steamAppId]?.hlsUrl && !videoCache[game.steamAppId]?.videoUrl) {
+          await fetchSteamVideoDirect(game.steamAppId);
+        }
         if (result.updated) {
           const idx = games.findIndex(g => g.id === game.id);
           if (idx >= 0) {
@@ -814,6 +904,7 @@
     window.removeEventListener('mousemove', resetIdleTimer);
     window.removeEventListener('mousedown', resetIdleTimer);
     window.removeEventListener('click', handleClickSound);
+    cleanupHls();
   });
 
   function handleKeyDown(e: KeyboardEvent) {
@@ -1439,7 +1530,16 @@
     <div class="detail-view">
       <!-- 背景 -->
       <div class="detail-bg">
-        {#if detailGame.backgroundImage}
+        {#if detailGame.steamAppId && (videoCache[detailGame.steamAppId]?.hlsUrl || videoCache[detailGame.steamAppId]?.videoUrl)}
+          <!-- svelte-ignore a11y_media_has_caption -->
+          <video
+            bind:this={detailVideoEl}
+            class="detail-bg-video"
+            loop
+            muted
+            playsinline
+          ></video>
+        {:else if detailGame.backgroundImage}
           <img src={detailGame.backgroundImage} alt="" class="detail-bg-img" />
         {:else if detailGame.steamAppId && videoCache[detailGame.steamAppId]?.heroUrl}
           <img src={videoCache[detailGame.steamAppId].heroUrl} alt="" class="detail-bg-img" />
@@ -2468,6 +2568,7 @@
   .detail-view { position: fixed; inset: 0; z-index: 70; background: #000; animation: detailEnter 0.6s cubic-bezier(0.16, 1, 0.3, 1); }
   .detail-bg { position: absolute; inset: 0; }
   .detail-bg-img { width: 100%; height: 100%; object-fit: cover; }
+  .detail-bg-video { width: 100%; height: 100%; object-fit: cover; }
   .detail-bg-img.cover-bg { filter: blur(30px) brightness(0.4); transform: scale(1.2); }
   .detail-bg-gradient { width: 100%; height: 100%; background: linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%); }
   .detail-bg-overlay { position: absolute; inset: 0; background: linear-gradient(to top, rgba(0,0,0,0.95) 0%, rgba(0,0,0,0.6) 40%, rgba(0,0,0,0.3) 100%); }

@@ -834,6 +834,7 @@ pub async fn fetch_steam_metadata(app: AppHandle, game_id: String, steam_app_id:
     let mut categories_list: Option<Vec<String>> = None;
     let mut critic_score: Option<f32> = None;
     let mut background_image: Option<String> = None;
+    let mut movies: Vec<serde_json::Value> = Vec::new();
 
     if let Some(app_data) = json.get(&steam_app_id) {
         if app_data.get("success").and_then(|v| v.as_bool()).unwrap_or(false) {
@@ -871,6 +872,37 @@ pub async fn fetch_steam_metadata(app: AppHandle, game_id: String, steam_app_id:
                 }
 
                 background_image = data.get("background").and_then(|v| v.as_str()).map(|s| s.to_string());
+
+                // 提取视频/预告片
+                if let Some(movie_arr) = data.get("movies").and_then(|v| v.as_array()) {
+                    println!("[VIDEO] Found {} movies in Steam API for appid {}", movie_arr.len(), steam_app_id);
+                    for m in movie_arr {
+                        let mut movie = serde_json::Map::new();
+                        if let Some(name) = m.get("name").and_then(|v| v.as_str()) {
+                            movie.insert("name".into(), serde_json::json!(name));
+                        }
+                        if let Some(thumb) = m.get("thumbnail").and_then(|v| v.as_str()) {
+                            movie.insert("thumbnail".into(), serde_json::json!(thumb));
+                        }
+
+                        // HLS 流 (用 hls.js 在前端播放)
+                        if let Some(hls) = m.get("hls_h264").and_then(|v| v.as_str()) {
+                            movie.insert("hlsUrl".into(), serde_json::json!(hls));
+                        }
+
+                        // 旧格式 mp4 直链 (兼容老游戏)
+                        if let Some(movie_id) = m.get("id").and_then(|v| v.as_u64()) {
+                            let mp4_max = format!("https://steamcdn-a.akamaihd.net/steam/apps/{}/movie_max.mp4", movie_id);
+                            movie.insert("mp4Max".into(), serde_json::json!(mp4_max));
+                        }
+
+                        if !movie.is_empty() {
+                            movies.push(serde_json::Value::Object(movie));
+                        }
+                    }
+                } else {
+                    println!("[VIDEO] No 'movies' field in Steam API response for appid {}", steam_app_id);
+                }
 
                 if let Some(release) = data.get("release_date").and_then(|v| v.get("date")).and_then(|v| v.as_str()) {
                     release_date = Some(release.to_string());
@@ -925,8 +957,48 @@ pub async fn fetch_steam_metadata(app: AppHandle, game_id: String, steam_app_id:
         "categories": categories_list,
         "criticScore": critic_score,
         "backgroundImage": background_image,
+        "movies": movies,
         "updated": updated
     }))
+}
+
+/// 从 Steam API 获取游戏视频/预告片 URL
+#[tauri::command(rename_all = "camelCase")]
+pub async fn fetch_steam_videos(steam_app_id: String) -> Result<serde_json::Value, String> {
+    let client = get_http_client();
+    let url = format!(
+        "https://store.steampowered.com/api/appdetails?appids={}&filters=movies",
+        steam_app_id
+    );
+    let resp = client.get(&url).send().await.map_err(|e| e.to_string())?;
+    let text = resp.text().await.map_err(|e| e.to_string())?;
+    let json: serde_json::Value = serde_json::from_str(&text).map_err(|e| e.to_string())?;
+
+    let mut videos: Vec<serde_json::Value> = Vec::new();
+    if let Some(app_data) = json.get(&steam_app_id) {
+        if app_data.get("success").and_then(|v| v.as_bool()).unwrap_or(false) {
+            if let Some(data) = app_data.get("data") {
+                if let Some(movie_arr) = data.get("movies").and_then(|v| v.as_array()) {
+                    for m in movie_arr {
+                        let thumbnail = m.get("thumbnail").and_then(|v| v.as_str()).unwrap_or("");
+                        let name = m.get("name").and_then(|v| v.as_str()).unwrap_or("");
+                        let hls_url = m.get("hls_h264").and_then(|v| v.as_str()).unwrap_or("");
+                        let mut mp4_max = String::new();
+                        if let Some(movie_id) = m.get("id").and_then(|v| v.as_u64()) {
+                            mp4_max = format!("https://steamcdn-a.akamaihd.net/steam/apps/{}/movie_max.mp4", movie_id);
+                        }
+                        videos.push(serde_json::json!({
+                            "name": name,
+                            "thumbnail": thumbnail,
+                            "hlsUrl": hls_url,
+                            "mp4Max": mp4_max
+                        }));
+                    }
+                }
+            }
+        }
+    }
+    Ok(serde_json::json!({ "videos": videos }))
 }
 
 /// 更新单个游戏的字段

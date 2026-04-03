@@ -12,7 +12,8 @@
   "dependencies": {
     "@tauri-apps/api": "^2.0.0",
     "@tauri-apps/plugin-dialog": "^2.6.0",
-    "@tauri-apps/plugin-process": "^2.3.1"
+    "@tauri-apps/plugin-process": "^2.3.1",
+    "hls.js": "^1.6.15"
   },
   "devDependencies": {
     "@sveltejs/vite-plugin-svelte": "^5.1.1",

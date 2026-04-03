@@ -57,6 +57,7 @@ fn main() {
             games::download_steam_covers,
             games::download_game_cover,
             games::fetch_steam_metadata,
+            games::fetch_steam_videos,
             games::update_game,
             games::select_cover_image,
             games::open_folder,
